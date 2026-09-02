@@ -65,66 +65,99 @@ flowchart TD
 - Presidio (Analyzer, Anonymizer), KLUE-BERT, spaCy
 - Redis (Vault), AES-256
 - AWS (ECS/EC2, ElastiCache, KMS, Secrets Manager)
-- uv, ruff, pytest, pre-commit, GitHub Actions
+- uv, ruff, mypy, pytest, gitleaks, pre-commit, GitHub Actions
 
-## 로컬 개발 환경 세팅
+## 로컬 환경 세팅
 
-> 현재 저장소는 문서만 있는 초기 상태다. 아래 명령이 참조하는 `pyproject.toml`, `docker-compose.yml`, `.env.example`은 프록시 스켈레톤이 `develop`에 올라간 뒤 동작한다.
+> 저장소는 아직 문서만 있는 초기 상태다. `pyproject.toml`, `docker-compose.yml`, `.env.example`, `.pre-commit-config.yaml`은 프록시 스켈레톤이 `develop`에 올라간 뒤부터 동작한다.
 
-**1. 의존성 설치** — [uv](https://docs.astral.sh/uv/) 필요
+### 브랜치
+
+브랜치는 이미 다 만들어져 있다. **새로 만들지 말고 자기 브랜치로 이동해서 작업한다.**
+
+| 브랜치 | 용도 |
+| --- | --- |
+| `main` | 최종 제출 — 직접 push 금지 |
+| `develop` | 통합 브랜치 — 직접 push 금지 |
+| `feature/detection` | 기본 탐지 (L3) — 정민우 |
+| `feature/detection-ecommerce` | 이커머스 특화 탐지 (L4) — 이선학 |
+| `feature/risk-scoring` | 문맥·위험도 평가 (L5) — 형지원 |
+| `feature/vault` | 가명화·Vault (L6) — 윤채림 |
+| `feature/proxy` | 프록시·복원 (L7~L9) — 김민석 |
+
+```bash
+git fetch origin
+git checkout feature/{자기 역할}
+```
+
+### 1. GitHub 인증 (WSL)
+
+```bash
+gh auth login
+```
+
+`GitHub.com` → `HTTPS` → `Login with a web browser`를 고르고, 터미널에 뜬 코드를 브라우저에 입력한다.
+`gh`가 없으면 [설치 안내](https://github.com/cli/cli/blob/trunk/docs/install_linux.md)를 따른다.
+
+### 2. 클론
+
+```bash
+git clone https://github.com/KISIA-AI-Project-1/privacy-proxy.git
+cd privacy-proxy
+```
+
+### 3. origin을 HTTPS로
+
+이미 클론해둔 저장소가 SSH로 잡혀 있으면 바꾼다.
+
+```bash
+git remote set-url origin https://github.com/KISIA-AI-Project-1/privacy-proxy.git
+git remote -v
+```
+
+> **토큰(PAT)을 remote URL에 넣지 않는다.** `https://<token>@github.com/...` 형태는 토큰이 `.git/config`와 셸 히스토리에 평문으로 남는다. 인증은 `gh auth login`이 설정한 credential helper가 처리하므로 URL은 위 형태 그대로 둔다.
+
+### 4. push 보호 훅 등록 (최초 1회)
+
+```bash
+git config core.hooksPath .githooks
+```
+
+`main`·`develop` 직접 push를 차단한다. 훅 스크립트는 `.gitattributes`로 개행이 LF에 고정돼 있어 WSL·Windows 어디서 받아도 그대로 실행된다.
+
+### 5. 의존성 설치와 실행
 
 ```bash
 uv sync
-```
-
-**2. pre-commit 훅 등록** (최초 1회)
-
-```bash
-uv run pre-commit install
-```
-
-**3. 환경 변수 설정**
-
-```bash
-cp .env.example .env
-```
-
-`.env`에 채울 값:
-
-| 변수 | 설명 |
-| --- | --- |
-| `PROXY_API_KEY` | 직원 PC가 프록시에 붙을 때 쓰는 전용 키 |
-| `ANTHROPIC_API_KEY` | 업스트림 Claude 호출용 (L7에서 교체 주입) |
-| `OPENAI_API_KEY` | 업스트림 OpenAI 호출용 |
-| `REDIS_URL` | Vault 접속 주소 (기본 `redis://localhost:6379/0`) |
-| `VAULT_ENCRYPTION_KEY` | Vault AES-256 키 (32바이트, base64) |
-| `LOG_LEVEL` | 기본 `INFO` |
-
-`.env`는 커밋하지 않는다.
-
-**4. Redis Vault 기동**
-
-```bash
-docker compose up -d
-```
-
-**5. 서버 실행**
-
-```bash
+cp .env.example .env     # 값 채우기
+docker compose up -d     # Redis Vault
 uv run uvicorn privacy_proxy.main:app --reload --port 8000
 ```
 
-**6. 동작 확인**
+`.env`에 채울 값: `PROXY_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `REDIS_URL`, `VAULT_ENCRYPTION_KEY`, `LOG_LEVEL`. **`.env`는 커밋하지 않는다.**
+
+### 6. 커밋 전 체크
+
+**별도 설치 명령이 없다.** 4번의 `git config core.hooksPath .githooks` 하나로 끝난다.
+`pre-commit install`은 쓰지 않는다 — `core.hooksPath`가 설정돼 있으면 pre-commit이 설치를 거부한다(`Cowardly refusing to install hooks with core.hooksPath set`). 대신 `.githooks/pre-commit`과 `.githooks/pre-push`가 [.pre-commit-config.yaml](.pre-commit-config.yaml)을 직접 호출한다.
+
+| 훅 | 역할 | 실행 시점 |
+| --- | --- | --- |
+| `ruff` | 린트·포맷 | 커밋 |
+| `gitleaks` | 커밋에 섞인 키·토큰·개인정보 탐지 | 커밋 |
+| `mypy` | 타입 검사 (`src/`) | 커밋 |
+| `pytest-cov` | 테스트 및 커버리지 | push |
+
+`pytest`는 커밋마다 돌리기엔 느려서 push 시점에만 실행한다.
+
+수동 실행:
 
 ```bash
-curl -X POST http://localhost:8000/v1/messages -H "Content-Type: application/json" -H "x-api-key: $PROXY_API_KEY" -d '{"model":"claude-sonnet-5","max_tokens":256,"messages":[{"role":"user","content":"홍길동 고객님(010-1234-5678) 주문 20240115-A1B2 환불 문의"}]}'
+uv run pre-commit run --all-files                      # 커밋 단계 훅
+uv run pre-commit run --hook-stage pre-push --all-files # 테스트까지
 ```
 
-**7. 로컬 검사**
-
-```bash
-uv run ruff check . && uv run ruff format --check . && uv run pytest
-```
+훅을 건너뛰어야 하면 `git commit --no-verify`.
 
 ## 프로젝트 구조
 
@@ -181,7 +214,7 @@ privacy-proxy/
 ├── docker-compose.yml           # Redis Vault
 ├── pyproject.toml
 ├── .env.example
-├── .pre-commit-config.yaml
+├── .pre-commit-config.yaml       # ruff, gitleaks, mypy, pytest-cov
 ├── CONTRIBUTING.md
 └── README.md
 ```

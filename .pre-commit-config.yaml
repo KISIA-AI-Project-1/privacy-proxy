@@ -1,0 +1,49 @@
+# 훅 등록은 `pre-commit install`이 아니라 core.hooksPath로 한다.
+#   git config core.hooksPath .githooks
+# .githooks/pre-commit, .githooks/pre-push가 이 설정을 호출한다.
+#
+# rev 값은 초기 기준점이다. 스켈레톤 머지 후 한 번 갱신할 것:
+#   uv run pre-commit autoupdate
+
+default_stages: [pre-commit]
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.6
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.23.3
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.15.0
+    hooks:
+      - id: mypy
+        files: ^src/
+        additional_dependencies: [pydantic, types-redis]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: detect-private-key
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  - repo: local
+    hooks:
+      # 테스트는 커밋마다 돌리기엔 느려서 push 시점에만 실행한다.
+      - id: pytest-cov
+        name: pytest (coverage)
+        entry: uv run pytest --cov=src/privacy_proxy --cov-report=term-missing
+        language: system
+        types: [python]
+        pass_filenames: false
+        stages: [pre-push]
