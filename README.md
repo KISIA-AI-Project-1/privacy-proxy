@@ -69,7 +69,7 @@ flowchart TD
 
 ## 로컬 환경 세팅
 
-> 저장소는 아직 문서만 있는 초기 상태다. `pyproject.toml`, `docker-compose.yml`, `.env.example`, `.pre-commit-config.yaml`은 프록시 스켈레톤이 `develop`에 올라간 뒤부터 동작한다.
+> Python 버전은 `.python-version`(3.11)에 고정돼 있다. `uv`가 없으면 먼저 설치한다: `curl -LsSf https://astral.sh/uv/install.sh | sh`
 
 ### 브랜치
 
@@ -123,15 +123,38 @@ git remote -v
 git config core.hooksPath .githooks
 ```
 
-`main`·`develop` 직접 push를 차단한다. 훅 스크립트는 `.gitattributes`로 개행이 LF에 고정돼 있어 WSL·Windows 어디서 받아도 그대로 실행된다.
+`main`·`develop` 직접 push를 차단한다. 훅 스크립트는 `.gitattributes`로 개행이 LF에 고정돼 있고, 실행 권한(100755)도 저장소에 기록돼 있다.
+
+제대로 걸렸는지 확인한다:
+
+```bash
+git config core.hooksPath && test -x .githooks/pre-push && echo "훅 OK"
+```
+
+`훅 OK`가 안 나오면 훅이 **조용히 무시된다.** git은 실행 권한이 없는 훅을 경고 한 줄만 남기고 건너뛰기 때문에, 검사가 도는 줄 알고 커밋하게 된다. 권한이 풀렸으면 되살린다:
+
+```bash
+git update-index --chmod=+x .githooks/pre-commit .githooks/pre-push
+```
+
+> 이 저장소는 Free 플랜 private이라 GitHub 서버 쪽 branch protection을 쓸 수 없다. `main`·`develop` 보호는 이 로컬 훅과 CI뿐이므로, 각자 위 설정을 반드시 해둔다.
 
 ### 5. 의존성 설치와 실행
 
 ```bash
-uv sync
+uv sync                  # 프록시 뼈대 + 개발 도구
 cp .env.example .env     # 값 채우기
 docker compose up -d     # Redis Vault
 uv run uvicorn privacy_proxy.main:app --reload --port 8000
+```
+
+`http://localhost:8000/healthz`가 `{"status":"ok"}`를 주면 정상이다.
+
+L3·L4 탐지 작업자는 모델 의존성(torch, spaCy, transformers)을 추가로 받는다.
+용량이 커서 기본 설치에서 빼뒀다.
+
+```bash
+uv sync --extra detection
 ```
 
 `.env`에 채울 값: `PROXY_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `REDIS_URL`, `VAULT_ENCRYPTION_KEY`, `LOG_LEVEL`. **`.env`는 커밋하지 않는다.**
@@ -161,7 +184,8 @@ uv run pre-commit run --hook-stage pre-push --all-files # 테스트까지
 
 ## 프로젝트 구조
 
-L1~L9에 1:1로 대응하는 구조를 제안한다.
+L1~L9에 1:1로 대응한다. 현재 저장소에는 공통 뼈대(`main.py`, `config.py`)와
+빈 `tests/`·`docs/`만 있고, 각 레이어 디렉터리는 담당자가 자기 브랜치에서 만든다.
 
 ```
 privacy-proxy/
@@ -210,11 +234,16 @@ privacy-proxy/
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   └── decisions/               # 설계 결정 기록(ADR)
-├── .github/workflows/ci.yml
+├── .github/
+│   ├── workflows/ci.yml         # ruff, mypy, pytest, gitleaks
+│   ├── CODEOWNERS
+│   └── pull_request_template.md
 ├── docker-compose.yml           # Redis Vault
 ├── pyproject.toml
+├── .python-version              # 3.11 고정
 ├── .env.example
-├── .pre-commit-config.yaml       # ruff, gitleaks, mypy, pytest-cov
+├── .gitignore
+├── .pre-commit-config.yaml      # ruff, gitleaks, mypy, pytest-cov
 ├── CONTRIBUTING.md
 └── README.md
 ```

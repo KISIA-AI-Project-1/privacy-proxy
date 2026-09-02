@@ -1,0 +1,15 @@
+# L6 Vault용 로컬 Redis. 운영에서는 ElastiCache로 대체한다.
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: privacy-proxy-redis
+    ports:
+      - "6379:6379"
+    # 토큰 매핑은 재기동 시 살아 있으면 안 되는 민감 데이터라
+    # AOF/RDB 영속화를 끄고 메모리에만 둔다.
+    command: redis-server --save "" --appendonly no
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5

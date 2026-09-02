@@ -1,0 +1,55 @@
+# 개인정보·비밀값 —— 이 블록은 절대 완화하지 않는다.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+secrets/
+vault_dump*
+*.rdb
+dump.rdb
+
+# 실제 데이터가 섞이기 쉬운 경로. 테스트 픽스처는 반드시 가상값만 쓴다.
+data/
+samples/
+*.csv
+*.tsv
+*.jsonl
+!tests/fixtures/**/*.jsonl
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# 도구 캐시
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# 모델 가중치·캐시 (KLUE-BERT, spaCy). 용량이 크고 저장소에 들어가면 안 된다.
+.cache/
+models/
+*.bin
+*.safetensors
+*.onnx
+
+# 로그 — 프롬프트 원문이 섞일 수 있다.
+*.log
+logs/
+
+# 에디터·OS
+.idea/
+.vscode/
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
