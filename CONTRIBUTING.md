@@ -31,10 +31,15 @@ main (항상 동작 상태, 발표/제출용)
 
 ## PR
 
+- **PR 대상 브랜치는 `develop`이다.** `main`으로 바로 올리지 않는다.
 - 최소 1명 리뷰 후 merge한다 (본인 파트가 아닌 사람으로 순환 배정).
-- CI(ruff, pytest) 통과 필수 — 체크가 빨간 상태로 merge하지 않는다.
-- `develop` 최종 merge는 팀장이 확인 후 진행한다.
-- PR 본문에 구현 내용(1줄) / 테스트 방법 / 의존성 있는 부분을 포함한다.
+- CI(ruff, mypy, pytest, gitleaks) 통과 필수 — 체크가 빨간 상태로 merge하지 않는다.
+- `main` 최종 merge는 팀장이 확인 후 진행한다.
+- PR 본문은 템플릿([.github/pull_request_template.md](.github/pull_request_template.md))을 그대로 채운다.
+
+> 이 저장소는 Free 플랜 private이라 GitHub 서버 쪽 branch protection·필수 체크를
+> 걸 수 없다. 위 규칙은 서버가 막아주지 않으므로 각자 지켜야 한다.
+> 로컬 훅(`core.hooksPath`)과 CI가 유일한 방어선이다.
 
 ## 로컬 검사
 

@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+# 같은 PR에 새 커밋이 올라오면 이전 실행을 취소한다.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        # 탐지 계층 extra(torch/spacy)는 CI에서 제외한다. 설치가 수 분 걸리고
+        # 현재 테스트가 의존하지 않는다. 필요해지면 별도 job으로 분리한다.
+        run: uv sync --group dev
+
+      - name: ruff (lint)
+        run: uv run ruff check --output-format=github .
+
+      - name: ruff (format)
+        run: uv run ruff format --check .
+
+      - name: mypy
+        run: uv run mypy
+
+      - name: pytest
+        run: uv run pytest --cov=src/privacy_proxy --cov-report=term-missing
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gitleaks가 PR의 전체 커밋 범위를 훑을 수 있게 한다.
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        # gitleaks-action은 조직 저장소에서 라이선스 키를 요구하므로
+        # 바이너리를 직접 받아 쓴다.
+        run: |
+          version=8.23.3
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+          gitleaks version
+
+      - name: Scan history
+        run: gitleaks detect --source . --redact --verbose
