@@ -138,24 +138,26 @@ uv run uvicorn privacy_proxy.main:app --reload --port 8000
 
 ### 6. 커밋 전 체크
 
+**별도 설치 명령이 없다.** 4번의 `git config core.hooksPath .githooks` 하나로 끝난다.
+`pre-commit install`은 쓰지 않는다 — `core.hooksPath`가 설정돼 있으면 pre-commit이 설치를 거부한다(`Cowardly refusing to install hooks with core.hooksPath set`). 대신 `.githooks/pre-commit`과 `.githooks/pre-push`가 [.pre-commit-config.yaml](.pre-commit-config.yaml)을 직접 호출한다.
+
+| 훅 | 역할 | 실행 시점 |
+| --- | --- | --- |
+| `ruff` | 린트·포맷 | 커밋 |
+| `gitleaks` | 커밋에 섞인 키·토큰·개인정보 탐지 | 커밋 |
+| `mypy` | 타입 검사 (`src/`) | 커밋 |
+| `pytest-cov` | 테스트 및 커버리지 | push |
+
+`pytest`는 커밋마다 돌리기엔 느려서 push 시점에만 실행한다.
+
+수동 실행:
+
 ```bash
-uv run pre-commit install
+uv run pre-commit run --all-files                      # 커밋 단계 훅
+uv run pre-commit run --hook-stage pre-push --all-files # 테스트까지
 ```
 
-최초 1회 실행해두면 커밋할 때마다 아래가 자동으로 돈다.
-
-| 훅 | 역할 |
-| --- | --- |
-| `ruff` | 린트·포맷 |
-| `gitleaks` | 커밋에 섞인 키·토큰·개인정보 탐지 |
-| `mypy` | 타입 검사 |
-| `pytest-cov` | 테스트 및 커버리지 |
-
-전체 파일에 수동으로 돌리려면:
-
-```bash
-uv run pre-commit run --all-files
-```
+훅을 건너뛰어야 하면 `git commit --no-verify`.
 
 ## 프로젝트 구조
 

@@ -15,7 +15,7 @@ main (항상 동작 상태, 발표/제출용)
 - `main` 직접 push 금지. `develop`에서 검증된 것만 merge한다.
 - 프록시 스켈레톤을 `develop`에 먼저 올리고, 나머지는 거기서 feature 브랜치를 생성한다.
 - 커밋 전 `develop` 최신으로 rebase한다.
-- 최초 1회 `git config core.hooksPath .githooks`를 실행한다 (main/develop 직접 push 방지).
+- 최초 1회 `git config core.hooksPath .githooks`를 실행한다. main/develop 직접 push를 막고, pre-commit 훅(ruff, gitleaks, mypy, pytest-cov)도 이걸로 함께 등록된다.
 
 ## 커밋 메시지
 
@@ -44,7 +44,9 @@ uv run ruff format .
 uv run pytest
 ```
 
-`uv run pre-commit install`을 한 번 실행해두면 커밋 시 자동으로 검사된다.
+`core.hooksPath`를 설정해뒀다면 커밋·push 시 자동으로 검사된다.
+`pre-commit install`은 쓰지 않는다 — `core.hooksPath`가 설정돼 있으면 pre-commit이 설치를 거부한다.
+훅 목록은 [.pre-commit-config.yaml](.pre-commit-config.yaml) 참고.
 
 ## 개발 규칙
 
