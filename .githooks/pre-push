@@ -1,0 +1,47 @@
+#!/bin/sh
+#
+# main / develop 직접 push 방지 훅.
+#
+# 활성화 (최초 1회):
+#   git config core.hooksPath .githooks
+#
+# 부득이하게 우회해야 할 때:
+#   ALLOW_PROTECTED_PUSH=1 git push ...
+#
+# stdin 형식: <local ref> <local sha> <remote ref> <remote sha>
+
+protected="main develop"
+zero=$(git hash-object --stdin </dev/null | tr '[0-9a-f]' '0')
+blocked=""
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+	[ -z "$remote_ref" ] && continue
+
+	branch=${remote_ref#refs/heads/}
+	[ "$branch" = "$remote_ref" ] && continue
+
+	for p in $protected; do
+		if [ "$branch" = "$p" ]; then
+			if [ "$local_sha" = "$zero" ]; then
+				blocked="$blocked  - $branch (삭제)\n"
+			else
+				blocked="$blocked  - $branch\n"
+			fi
+		fi
+	done
+done
+
+if [ -n "$blocked" ]; then
+	if [ "$ALLOW_PROTECTED_PUSH" = "1" ]; then
+		printf 'pre-push: 보호 브랜치 push를 ALLOW_PROTECTED_PUSH=1 로 허용합니다.\n' >&2
+		exit 0
+	fi
+
+	printf 'pre-push: 보호 브랜치에 직접 push할 수 없습니다.\n' >&2
+	printf "$blocked" >&2
+	printf '\nfeature 브랜치에 push한 뒤 PR로 merge하세요. CONTRIBUTING.md 참고.\n' >&2
+	printf '우회가 필요하면: ALLOW_PROTECTED_PUSH=1 git push ...\n' >&2
+	exit 1
+fi
+
+exit 0
