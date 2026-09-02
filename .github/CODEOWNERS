@@ -1,0 +1,26 @@
+# 레이어별 소유자. PR 리뷰어 자동 지정에 쓴다.
+#
+# 주의: CODEOWNERS 자동 지정은 public 저장소이거나 GitHub Pro/Team 플랜에서만
+# 동작한다. 현재 이 저장소는 Free 플랜 private이라 이 파일은 문서 역할만 한다.
+# 플랜을 올리거나 공개 전환하면 그때부터 자동으로 적용된다.
+
+# 공통 — 저장소 설정, CI, 문서
+*                                   @seonhak123
+
+# L3 기본 탐지 — 정민우
+/src/privacy_proxy/detection/base/  @mesjds1864-jungminwoo
+
+# L4 이커머스 특화 탐지 — 이선학
+/src/privacy_proxy/detection/ecommerce/ @seonhak123
+
+# L5 문맥·간접식별 위험도 — 형지원
+# TODO: 형지원 GitHub 계정이 아직 org 멤버가 아니라 비워둔다. 초대 후 채울 것.
+# /src/privacy_proxy/risk/          @???
+
+# L6 가역적 토큰화 & Vault — 윤채림
+/src/privacy_proxy/vault/           @ycr112
+
+# L7~L9 업스트림·복원·감사 — 김민석
+/src/privacy_proxy/upstream/        @MIDES2
+/src/privacy_proxy/restore/         @MIDES2
+/src/privacy_proxy/audit/           @MIDES2
