@@ -13,6 +13,7 @@ P3에서 이 결과물에 이커머스 CS 데이터로 2차 파인튜닝을 얹�
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import math
 import time
@@ -87,6 +88,8 @@ def measure_latency(
     때문이다. 배치 처리량으로 재면 실제보다 낙관적으로 나온다.
     """
     model.eval()
+    device = next(model.parameters()).device
+    on_cuda = device.type == "cuda"
     durations: list[float] = []
 
     with torch.inference_mode():
@@ -97,10 +100,19 @@ def measure_latency(
                 truncation=True,
                 max_length=max_length,
             )
+            encoded = {key: value.to(device) for key, value in encoded.items()}
+
+            # CUDA 커널은 비동기로 큐에 쌓인다. 동기화 없이 재면 실제 연산이 아니라
+            # 커널을 던져 넣는 시간만 재게 되어 말이 안 되게 빠른 값이 나온다.
+            if on_cuda:
+                torch.cuda.synchronize()
             started = time.perf_counter()
             model(**encoded)
+            if on_cuda:
+                torch.cuda.synchronize()
             elapsed = time.perf_counter() - started
-            if index >= warmup:  # 초기 몇 건은 캐시 워밍업이라 버린다
+
+            if index >= warmup:  # 초기 몇 건은 워밍업이라 버린다
                 durations.append(elapsed)
 
     if not durations:
@@ -112,6 +124,59 @@ def measure_latency(
         "latency_p95_s": float(np.percentile(array, 95)),
         "latency_samples": float(len(array)),
     }
+
+
+def build_training_arguments(
+    run_dir: Path,
+    run_name: str,
+    lr: float,
+    batch_size: int,
+    epochs: int,
+    seed: int,
+    weight_decay: float,
+    warmup_ratio: float,
+    steps_per_epoch: int,
+) -> TrainingArguments:
+    """transformers 버전 차이를 흡수해 TrainingArguments를 만든다.
+
+    캐글·코랩 이미지의 transformers 버전이 로컬과 다르다. 인자 이름이 버전마다
+    바뀌어서(``evaluation_strategy`` → ``eval_strategy``, ``warmup_ratio`` 제거)
+    한쪽에 맞춰 하드코딩하면 다른 쪽에서 TypeError로 죽는다. 시그니처를 보고
+    있는 인자만 넘긴다.
+    """
+    available = inspect.signature(TrainingArguments.__init__).parameters
+
+    options: dict[str, Any] = {
+        "output_dir": str(run_dir / "checkpoints"),
+        "run_name": run_name,
+        "learning_rate": lr,
+        "per_device_train_batch_size": batch_size,
+        "per_device_eval_batch_size": batch_size,
+        "num_train_epochs": epochs,
+        "weight_decay": weight_decay,
+        "logging_strategy": "epoch",
+        "save_strategy": "no",  # 체크포인트가 400MB+라 최종본만 따로 저장한다
+        "seed": seed,
+        "report_to": [],  # wandb 등 외부 도구 붙이지 않는다
+        "dataloader_num_workers": 0,
+    }
+
+    # log_history에 epoch별 지표가 쌓이게 한다
+    if "eval_strategy" in available:
+        options["eval_strategy"] = "epoch"
+    else:
+        options["evaluation_strategy"] = "epoch"
+
+    if "warmup_ratio" in available:
+        options["warmup_ratio"] = warmup_ratio
+    else:
+        options["warmup_steps"] = int(steps_per_epoch * epochs * warmup_ratio)
+
+    # GPU에서는 fp16이 2배 이상 빠르다. CPU에서는 켜면 오히려 느리거나 죽는다.
+    if torch.cuda.is_available() and "fp16" in available:
+        options["fp16"] = True
+
+    return TrainingArguments(**options)
 
 
 def train(
@@ -164,26 +229,17 @@ def train(
 
     evaluator = _prepare_evaluator(dataset[EVAL_SPLIT], tokenized[EVAL_SPLIT], label_set)
 
-    # transformers 5.x는 warmup_ratio를 받지 않는다. 스텝 수로 환산한다.
     steps_per_epoch = math.ceil(len(train_split) / batch_size)
-    warmup_steps = int(steps_per_epoch * epochs * config.warmup_ratio)
-
-    arguments = TrainingArguments(
-        output_dir=str(run_dir / "checkpoints"),
+    arguments = build_training_arguments(
+        run_dir=run_dir,
         run_name=run_name,
-        learning_rate=lr,
-        per_device_train_batch_size=batch_size,
-        per_device_eval_batch_size=batch_size,
-        num_train_epochs=epochs,
-        weight_decay=config.weight_decay,
-        warmup_steps=warmup_steps,
-        eval_strategy="epoch",  # log_history에 epoch별 지표가 쌓인다
-        logging_strategy="epoch",
-        save_strategy="no",  # 체크포인트가 400MB+라 최종본만 따로 저장한다
+        lr=lr,
+        batch_size=batch_size,
+        epochs=epochs,
         seed=seed,
-        report_to=[],  # wandb 등 외부 도구 붙이지 않는다
-        dataloader_num_workers=0,
-        disable_tqdm=False,
+        weight_decay=config.weight_decay,
+        warmup_ratio=config.warmup_ratio,
+        steps_per_epoch=steps_per_epoch,
     )
 
     trainer = Trainer(
