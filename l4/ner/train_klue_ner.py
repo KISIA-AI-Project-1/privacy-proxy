@@ -19,7 +19,7 @@ import math
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import torch
@@ -31,6 +31,7 @@ from transformers import (
     Trainer,
     TrainingArguments,
 )
+from transformers.trainer_utils import get_last_checkpoint
 
 from l4.ner.data import build_datasets, restore_text
 from l4.ner.labels import load_label_set
@@ -59,6 +60,8 @@ class TrainConfig:
     warmup_ratio: float = 0.1
     max_train_samples: int | None = None
     latency_samples: int = 200
+    save_steps: int = 0
+    save_total_limit: int = 1
     extra: dict[str, Any] = field(default_factory=dict)
 
 
@@ -126,6 +129,22 @@ def measure_latency(
     }
 
 
+def _last_checkpoint(checkpoint_dir: Path) -> str | None:
+    """끊긴 세션이 남긴 마지막 체크포인트를 찾는다.
+
+    코랩은 런타임이 회수되면 진행 중이던 학습이 통째로 날아간다. Drive에
+    체크포인트가 남아 있으면 거기서부터 이어서 돌린다.
+    """
+    if not checkpoint_dir.exists():
+        return None
+    # transformers가 이 함수에 타입을 안 달아뒀다. `type: ignore` 로 막으면
+    # transformers가 설치된 환경(로컬)과 아닌 환경(pre-commit 훅, CI)에서
+    # 필요 여부가 갈려 한쪽이 반드시 실패한다. cast로 양쪽 모두 통과시킨다.
+    find = cast(Any, get_last_checkpoint)
+    found: Any = find(str(checkpoint_dir))
+    return str(found) if found else None
+
+
 def build_training_arguments(
     run_dir: Path,
     run_name: str,
@@ -136,6 +155,8 @@ def build_training_arguments(
     weight_decay: float,
     warmup_ratio: float,
     steps_per_epoch: int,
+    save_steps: int,
+    save_total_limit: int,
 ) -> TrainingArguments:
     """transformers 버전 차이를 흡수해 TrainingArguments를 만든다.
 
@@ -155,11 +176,20 @@ def build_training_arguments(
         "num_train_epochs": epochs,
         "weight_decay": weight_decay,
         "logging_strategy": "epoch",
-        "save_strategy": "no",  # 체크포인트가 400MB+라 최종본만 따로 저장한다
         "seed": seed,
         "report_to": [],  # wandb 등 외부 도구 붙이지 않는다
         "dataloader_num_workers": 0,
     }
+
+    # 코랩은 세션이 끊길 수 있다. save_steps > 0 이면 중간 체크포인트를 남겨
+    # 재개할 수 있게 한다. 체크포인트 하나가 모델(430MB) + 옵티마이저 상태로
+    # 1.3GB쯤 되고 Drive 쓰기가 느리므로, save_total_limit로 개수를 묶는다.
+    if save_steps > 0:
+        options["save_strategy"] = "steps"
+        options["save_steps"] = save_steps
+        options["save_total_limit"] = save_total_limit
+    else:
+        options["save_strategy"] = "no"
 
     # log_history에 epoch별 지표가 쌓이게 한다
     if "eval_strategy" in available:
@@ -189,6 +219,9 @@ def train(
     max_train_samples: int | None = None,
     latency_samples: int = 200,
     output_root: Path = OUTPUT_ROOT,
+    save_steps: int = 0,
+    save_total_limit: int = 1,
+    resume: bool = True,
 ) -> dict[str, Any]:
     """학습하고 metrics dict를 반환한다.
 
@@ -205,6 +238,8 @@ def train(
         seed=seed,
         max_train_samples=max_train_samples,
         latency_samples=latency_samples,
+        save_steps=save_steps,
+        save_total_limit=save_total_limit,
     )
     run_dir = output_root / run_name
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -240,6 +275,8 @@ def train(
         weight_decay=config.weight_decay,
         warmup_ratio=config.warmup_ratio,
         steps_per_epoch=steps_per_epoch,
+        save_steps=save_steps,
+        save_total_limit=save_total_limit,
     )
 
     trainer = Trainer(
@@ -251,8 +288,12 @@ def train(
         compute_metrics=evaluator,
     )
 
+    checkpoint = _last_checkpoint(run_dir / "checkpoints") if resume else None
+    if checkpoint is not None:
+        print(f"[재개] {checkpoint} 에서 이어서 학습한다", flush=True)
+
     started = time.perf_counter()
-    trainer.train()
+    trainer.train(resume_from_checkpoint=checkpoint)
     runtime = time.perf_counter() - started
 
     eval_metrics = trainer.evaluate()
@@ -298,6 +339,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="스모크 테스트용. 학습 데이터를 이 개수로 자른다.",
     )
     parser.add_argument("--latency-samples", type=int, default=200)
+    parser.add_argument(
+        "--save-steps",
+        type=int,
+        default=0,
+        help="N스텝마다 체크포인트 저장. 0이면 저장 안 함. 코랩처럼 세션이 "
+        "끊길 수 있는 환경에서 켠다.",
+    )
+    parser.add_argument("--save-total-limit", type=int, default=1)
+    parser.add_argument("--no-resume", action="store_true")
     parser.add_argument("--output-root", type=Path, default=OUTPUT_ROOT)
     return parser
 
@@ -314,6 +364,9 @@ def main() -> None:
         max_train_samples=args.max_train_samples,
         latency_samples=args.latency_samples,
         output_root=args.output_root,
+        save_steps=args.save_steps,
+        save_total_limit=args.save_total_limit,
+        resume=not args.no_resume,
     )
     print(
         json.dumps(
