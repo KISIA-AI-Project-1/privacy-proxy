@@ -30,6 +30,10 @@
    | **Internet** | **On** — 꺼져 있으면 데이터셋 다운로드에서 실패한다 |
 
 4. **Add Input** 으로 1번에서 만든 `l4-ner` 데이터셋을 붙인다.
+   `Add Input` → `Your Datasets` 탭 → `l4-ner`.
+
+   > 이 단계를 빠뜨리면 2번 셀에서 멈춘다. 셀이 `/kaggle/input` 에 뭐가
+   > 들어 있는지 먼저 출력하므로, 비어 있으면 이 단계를 안 한 것이다.
 
 5. `Save Version` → **`Save & Run All (Commit)`**.
    브라우저를 닫아도 서버에서 끝까지 돈다.
