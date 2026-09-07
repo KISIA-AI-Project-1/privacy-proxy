@@ -4,7 +4,8 @@
 ``merge_bio_spans``). 두 경로가 갈라지면 "평가에서는 잡혔는데 서비스에서는
 놓치는" 차이가 생기고, L4에서 그건 곧 개인정보 유출이다.
 
-다음 주 ``alignment/`` (조사 경계 중재)가 이 함수의 출력을 입력으로 받는다.
+``alignment.py`` (조사 경계 중재)가 ``merge_bio_spans`` 뒤에 붙어 span 끝에
+딸려온 조사를 떼어낸다.
 """
 
 from __future__ import annotations
@@ -15,9 +16,10 @@ from typing import Any
 import torch
 from transformers import AutoModelForTokenClassification, AutoTokenizer
 
+from l4.ner.alignment import arbitrate_josa
 from l4.ner.bio import Span, merge_bio_spans
 from l4.ner.data import expand_subword_to_char
-from l4.ner.labels import LabelSet
+from l4.ner.labels import L4_ENTITY_TYPES, LabelSet
 
 
 def load_model(model_dir: str | Path) -> tuple[Any, Any, LabelSet]:
@@ -56,4 +58,8 @@ def predict_spans(
 
     predicted_ids = logits.argmax(dim=-1)[0].tolist()
     char_tags = expand_subword_to_char(offsets, predicted_ids, label_set, len(text))
-    return merge_bio_spans(char_tags, text)
+    spans = merge_bio_spans(char_tags, text)
+    spans = arbitrate_josa(spans, offsets, text)
+    # L4가 실제로 쓰는 태그만 내보낸다. QT/DT/OG/TI는 주문번호 등을 잘못 잡는
+    # 오탐 원인일 뿐이라 여기서 버린다 (RESULTS.md 이커머스 문맥 관찰 참고).
+    return [span for span in spans if span.entity_type in L4_ENTITY_TYPES]

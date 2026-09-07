@@ -20,6 +20,7 @@ from typing import Any
 import numpy as np
 from seqeval.metrics import classification_report
 
+from l4.ner.alignment import arbitrate_josa
 from l4.ner.bio import merge_bio_spans, spans_to_bio
 from l4.ner.data import expand_subword_to_char
 from l4.ner.labels import L4_ENTITY_TYPES, PRIMARY_ENTITY_TYPE, LabelSet
@@ -31,10 +32,20 @@ def canonicalize(
     label_set: LabelSet,
     char_length: int,
     text: str,
+    *,
+    apply_josa: bool = False,
 ) -> list[str]:
-    """서브워드 라벨 → 문자 BIO → span 병합 → 정규 BIO."""
+    """서브워드 라벨 → 문자 BIO → span 병합 → (선택) 조사 중재 → 정규 BIO.
+
+    ``apply_josa``는 예측에만 의미가 있다. 정답(``canonicalize_gold``)은 이미
+    조사를 뺀 좌표라 중재할 게 없다. 기본값 False로 기존 학습 지표(0.8714
+    기준선)와의 호환을 유지한다 — ``evaluate_alignment.py``가 True로 켜서
+    적용 전/후를 비교한다.
+    """
     char_tags = expand_subword_to_char(offsets, label_ids, label_set, char_length)
     spans = merge_bio_spans(char_tags, text)
+    if apply_josa:
+        spans = arbitrate_josa(spans, offsets, text)
     return spans_to_bio(spans, char_length)
 
 
@@ -129,6 +140,8 @@ class NerEvaluator:
         offsets: Sequence[Sequence[Sequence[int]]],
         texts: Sequence[str],
         gold_char_tags: Sequence[Sequence[int]],
+        *,
+        apply_josa: bool = False,
     ) -> None:
         if not (len(offsets) == len(texts) == len(gold_char_tags)):
             raise ValueError("offsets/texts/gold 길이가 어긋난다")
@@ -136,6 +149,7 @@ class NerEvaluator:
         self.offsets = offsets
         self.texts = texts
         self.gold_char_tags = gold_char_tags
+        self.apply_josa = apply_josa
 
     def __call__(self, eval_prediction: Any) -> dict[str, float]:
         logits = eval_prediction.predictions
@@ -156,6 +170,7 @@ class NerEvaluator:
                     self.label_set,
                     len(text),
                     text,
+                    apply_josa=self.apply_josa,
                 )
             )
             gold_sequences.append(
