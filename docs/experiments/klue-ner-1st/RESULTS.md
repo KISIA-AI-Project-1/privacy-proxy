@@ -179,7 +179,7 @@ PS recall이 +0.68%p로 제일 많이 오름. 조사 경계 중재가 이름(PS)
 | `<run>/log_history.csv` | Epoch별 loss/F1/PS recall 상세 로그 |
 | `figures/*.png` | 학습 곡선 및 지연시간 비교 그래프 |
 
-> **가중치 파일 안내:**  
+> **가중치 파일 안내:**
 > 모델 가중치(`model/`, 약 430MB)는 용량 문제로 레포에 커밋하지 않고 Google Drive(`privacy-proxy/l4-ner/klue-ner-base-e3/model/`)에 보관함. 로컬 테스트 시 `outputs/klue-ner-base-e3/model/` 경로에 내려받으면 `l4/ner/predict.py`에서 즉시 로드 가능.
 
 ### 재현 명령어
