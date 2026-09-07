@@ -183,9 +183,7 @@ def test_l4_pending_entity_is_classified_as_qi(entity_type: str) -> None:
         ("PURCHASE_COUNT", "3회", 6.0),
     ],
 )
-def test_l4_pending_scalar_qi_scores(
-    entity_type: str, value: str, expected_score: float
-) -> None:
+def test_l4_pending_scalar_qi_scores(entity_type: str, value: str, expected_score: float) -> None:
     result = assess_risk(context_for(value, [(entity_type, value)]))
     assert result.risk_score == expected_score
 
@@ -270,9 +268,7 @@ def test_unique_identifier_has_priority() -> None:
         ("SENSITIVE_FINANCIAL", PrivacyClass.SENSITIVE),
     ],
 )
-def test_confirmed_l4_entity_contract(
-    entity_type: str, expected_class: PrivacyClass
-) -> None:
+def test_confirmed_l4_entity_contract(entity_type: str, expected_class: PrivacyClass) -> None:
     entity = DetectedPII(
         entity_type=entity_type,
         original_value="테스트",
@@ -306,9 +302,7 @@ def test_sensitive_candidate_uses_confidence(
         layer="L4",
         confidence=confidence,
     )
-    result = assess_risk(
-        ProxyContext(raw_prompt="아토피가 있어요.", detected_entities=[entity])
-    )
+    result = assess_risk(ProxyContext(raw_prompt="아토피가 있어요.", detected_entities=[entity]))
     assert result.risk_score == expected_score
     assert result.risk_level == expected_level
     assert result.policy_action == expected_action

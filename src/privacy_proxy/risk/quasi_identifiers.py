@@ -180,9 +180,7 @@ def to_qi_feature(entity: DetectedPII) -> QIFeature | None:
     if entity_type in _AGE_TYPES:
         exact = entity_type == "AGE" and bool(_EXACT_AGE_RE.fullmatch(value))
         if exact:
-            return QIFeature(
-                "AGE", "AGE", 2, 20.0, "정확한 연령이 포함됨", exact_age=True
-            )
+            return QIFeature("AGE", "AGE", 2, 20.0, "정확한 연령이 포함됨", exact_age=True)
         return QIFeature("AGE", "AGE", 1, 8.0, "연령대 정보가 포함됨")
 
     if entity_type in _PRODUCT_TYPES:
