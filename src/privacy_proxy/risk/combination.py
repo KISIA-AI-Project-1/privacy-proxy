@@ -3,6 +3,7 @@
 from collections.abc import Iterable
 
 from privacy_proxy.models import DetectedPII
+
 from privacy_proxy.risk.quasi_identifiers import QIFeature, to_qi_feature
 
 

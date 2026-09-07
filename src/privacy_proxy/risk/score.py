@@ -3,6 +3,7 @@
 from time import perf_counter
 
 from privacy_proxy.models import ProxyContext
+
 from privacy_proxy.risk.combination import combination_score, select_representative_qis
 from privacy_proxy.risk.quasi_identifiers import PrivacyClass, privacy_class
 
