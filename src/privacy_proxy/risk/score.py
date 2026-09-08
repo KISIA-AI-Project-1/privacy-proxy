@@ -9,7 +9,7 @@ from privacy_proxy.risk.quasi_identifiers import PrivacyClass, privacy_class
 LOW_MAX = 30.0
 MEDIUM_MAX = 60.0
 DIRECT_IDENTIFIER_FLOOR = 80.0
-UNIQUE_IDENTIFIER_FLOOR = 85.0
+SERVICE_IDENTIFIER_FLOOR = 85.0
 SENSITIVE_INFORMATION_MAX_SCORE = 80.0
 
 
@@ -40,16 +40,16 @@ def assess_risk(context: ProxyContext) -> ProxyContext:
 
     classes = [(entity, privacy_class(entity)) for entity in context.detected_entities]
     direct = [entity for entity, kind in classes if kind is PrivacyClass.DIRECT]
-    unique = [entity for entity, kind in classes if kind is PrivacyClass.UNIQUE]
+    service = [entity for entity, kind in classes if kind is PrivacyClass.SERVICE]
     sensitive = [entity for entity, kind in classes if kind is PrivacyClass.SENSITIVE]
 
     if direct:
         score = max(score, DIRECT_IDENTIFIER_FLOOR)
         kinds = ", ".join(sorted({entity.entity_type.upper() for entity in direct}))
         _append_once(reasons, f"직접식별자({kinds})가 포함되어 우선 보호가 필요함")
-    if unique:
-        score = max(score, UNIQUE_IDENTIFIER_FLOOR)
-        kinds = ", ".join(sorted({entity.entity_type.upper() for entity in unique}))
+    if service:
+        score = max(score, SERVICE_IDENTIFIER_FLOOR)
+        kinds = ", ".join(sorted({entity.entity_type.upper() for entity in service}))
         _append_once(reasons, f"서비스 식별자({kinds})가 포함되어 우선 보호가 필요함")
     if sensitive:
         max_confidence = max(entity.confidence for entity in sensitive)
@@ -63,7 +63,7 @@ def assess_risk(context: ProxyContext) -> ProxyContext:
 
     final_score = min(100.0, round(score, 2))
     level = _level(final_score)
-    if direct or unique or sensitive:
+    if direct or service or sensitive:
         action = "TOKENIZE"
     elif level in {"MEDIUM", "HIGH"}:
         action = "GENERALIZE"

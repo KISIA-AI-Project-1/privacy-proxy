@@ -13,7 +13,7 @@ from privacy_proxy.models import DetectedPII
 
 class PrivacyClass(StrEnum):
     DIRECT = "DIRECT_IDENTIFIER"
-    UNIQUE = "UNIQUE_IDENTIFIER"
+    SERVICE = "SERVICE_IDENTIFIER"
     SENSITIVE = "SENSITIVE_INFORMATION"
     QI = "QUASI_IDENTIFIER"
     GENERAL = "GENERAL_INFORMATION"
@@ -58,7 +58,7 @@ DIRECT_IDENTIFIERS = frozenset(
     }
 )
 
-UNIQUE_IDENTIFIERS = frozenset(
+SERVICE_IDENTIFIERS = frozenset(
     {
         "ORDER_NUMBER",
         "ORDER_ID",
@@ -114,8 +114,8 @@ def privacy_class(entity: DetectedPII) -> PrivacyClass:
     entity_type = normalized_entity_type(entity)
     if entity_type in DIRECT_IDENTIFIERS:
         return PrivacyClass.DIRECT
-    if entity_type in UNIQUE_IDENTIFIERS:
-        return PrivacyClass.UNIQUE
+    if entity_type in SERVICE_IDENTIFIERS:
+        return PrivacyClass.SERVICE
     if entity_type in SENSITIVE_INFORMATION:
         return PrivacyClass.SENSITIVE
     if (

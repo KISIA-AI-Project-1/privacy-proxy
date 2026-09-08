@@ -244,7 +244,7 @@ def test_different_location_roles_are_preserved() -> None:
     assert result.risk_score == 28.0
 
 
-def test_unique_identifier_has_priority() -> None:
+def test_service_identifier_has_priority() -> None:
     text = "주문번호 ORD-2026-001을 확인해줘."
     result = assess_risk(context_for(text, [("ORDER_ID", "ORD-2026-001")]))
     assert result.risk_score == 85.0
@@ -258,10 +258,10 @@ def test_unique_identifier_has_priority() -> None:
         ("PERSON", PrivacyClass.DIRECT),
         ("ADDRESS_TAIL", PrivacyClass.DIRECT),
         ("LOCATION_INFORMAL", PrivacyClass.QI),
-        ("ORDER_ID", PrivacyClass.UNIQUE),
-        ("TRACKING_NUMBER", PrivacyClass.UNIQUE),
-        ("CUSTOMS_CLEARANCE_ID", PrivacyClass.UNIQUE),
-        ("CUSTOMER_ID", PrivacyClass.UNIQUE),
+        ("ORDER_ID", PrivacyClass.SERVICE),
+        ("TRACKING_NUMBER", PrivacyClass.SERVICE),
+        ("CUSTOMS_CLEARANCE_ID", PrivacyClass.SERVICE),
+        ("CUSTOMER_ID", PrivacyClass.SERVICE),
         ("SENSITIVE_HEALTH", PrivacyClass.SENSITIVE),
         ("SENSITIVE_RELIGION", PrivacyClass.SENSITIVE),
         ("SENSITIVE_FAMILY", PrivacyClass.SENSITIVE),
