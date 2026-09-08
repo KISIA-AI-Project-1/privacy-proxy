@@ -13,7 +13,7 @@ default_stages: [pre-commit]
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.6
+    rev: v0.16.6
     hooks:
       - id: ruff
         args: [--fix]
@@ -28,7 +28,7 @@ repos:
     rev: v1.15.0
     hooks:
       - id: mypy
-        files: ^src/
+        files: ^(src|l4)/
         # mypy 훅은 격리된 환경에서 돈다. 여기 없는 패키지는 import를 못 찾는다.
         # presidio/spacy/transformers는 스텁이 없어 pyproject의
         # ignore_missing_imports=true로 넘긴다.
