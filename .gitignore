@@ -55,6 +55,9 @@ runs/
 *.log
 logs/
 
+# 로컬 검증용 스크래치 스크립트 (커밋 안 함)
+l4/ner/try_it.py
+
 # 에디터·OS
 .idea/
 .vscode/

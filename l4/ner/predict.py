@@ -35,14 +35,18 @@ def load_model(model_dir: str | Path) -> tuple[Any, Any, LabelSet]:
     return model, tokenizer, LabelSet(names)
 
 
-def predict_spans(
+def encode_and_merge(
     text: str,
     model: Any,
     tokenizer: Any,
     label_set: LabelSet,
     max_length: int = 512,
-) -> list[Span]:
-    """평문 하나에서 엔티티 span 리스트를 뽑는다."""
+) -> tuple[list[Span], list[list[int]]]:
+    """토크나이즈 → forward → 문자 BIO → merge. ``arbitrate_josa`` 적용 전 단계.
+
+    ``(span 리스트, 토큰별 offset)`` 을 돌려준다. offset은 조사 경계 중재에
+    쓴다. 조사 중재 효과를 따로 보고 싶은 진단 스크립트도 이 함수를 쓴다.
+    """
     encoded = tokenizer(
         text,
         return_offsets_mapping=True,
@@ -58,7 +62,18 @@ def predict_spans(
 
     predicted_ids = logits.argmax(dim=-1)[0].tolist()
     char_tags = expand_subword_to_char(offsets, predicted_ids, label_set, len(text))
-    spans = merge_bio_spans(char_tags, text)
+    return merge_bio_spans(char_tags, text), offsets
+
+
+def predict_spans(
+    text: str,
+    model: Any,
+    tokenizer: Any,
+    label_set: LabelSet,
+    max_length: int = 512,
+) -> list[Span]:
+    """평문 하나에서 엔티티 span 리스트를 뽑는다."""
+    spans, offsets = encode_and_merge(text, model, tokenizer, label_set, max_length)
     spans = arbitrate_josa(spans, offsets, text)
     # L4가 실제로 쓰는 태그만 내보낸다. QT/DT/OG/TI는 주문번호 등을 잘못 잡는
     # 오탐 원인일 뿐이라 여기서 버린다 (RESULTS.md 이커머스 문맥 관찰 참고).
