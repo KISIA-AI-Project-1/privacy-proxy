@@ -1,8 +1,8 @@
 from collections.abc import Iterable
 
 import pytest
-from privacy_proxy.models import DetectedPII, ProxyContext
 
+from privacy_proxy.models import DetectedPII, ProxyContext
 from privacy_proxy.risk.quasi_identifiers import (
     PrivacyClass,
     privacy_class,

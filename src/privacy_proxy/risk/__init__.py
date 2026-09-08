@@ -1,3 +1,5 @@
-"""Presidio 기반 LLM 프롬프트 개인정보 가명화 프록시."""
+"""L5 quasi-identifier risk assessment."""
 
-__version__ = "0.1.0"
+from privacy_proxy.risk.score import assess_risk
+
+__all__ = ["assess_risk"]
