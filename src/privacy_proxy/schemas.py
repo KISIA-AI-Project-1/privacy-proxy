@@ -54,7 +54,7 @@ class DetectedPII(BaseModel):
     original_value: str
     start_idx: int
     end_idx: int
-    confidence: float = 1.0
+    confidence: float = Field(..., ge=0.0, le=1.0)
     segment_id: str = "seg-1"
 
     normalized: str = ""  # 요청 사항 기본값 제공용

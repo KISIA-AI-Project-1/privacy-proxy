@@ -10,7 +10,6 @@ from privacy_proxy.schemas import ParsedRequest, TextSegment, UserContext
 # =============================================================
 # [L1: 인증·인가 모듈]
 # =============================================================
-# 실무 환경에서는 사내 SSO나 DB를 붙이지만, PoC 단계에서는 환경변수/기본키 검증
 PROXY_API_KEY = os.getenv("PROXY_API_KEY", "example-proxy-key")
 
 

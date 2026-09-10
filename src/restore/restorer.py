@@ -3,18 +3,23 @@ from privacy_proxy.schemas import ProxyContext
 
 async def restore_l8(context: ProxyContext) -> ProxyContext:
     """
-    [L8 레이어] AI 답변 내의 가명화 토큰을 원본 개인정보로 역치환하여 복원합니다.
+    [L8: 역치환 복원 레이어]
     """
     if context.status == "failed" or not context.llm_raw_response:
         return context
 
     try:
         restored_text = context.llm_raw_response
+        mapping = context.vault_mapping
 
-        # vault_mapping를 순회하며 토큰을 원본 데이터로 덮어쓰기
-        if context.vault_mapping:
-            for token, original_value in context.vault_mapping.items():
-                restored_text = restored_text.replace(token, original_value)
+        if mapping:  # 글자 수가 긴 가명부터 정렬
+            sorted_fake_keys = sorted(mapping.keys(), key=len, reverse=True)
+
+            for fake_pii in sorted_fake_keys:
+                real_pii = mapping[fake_pii]
+
+                # 단어 경계(\b)를 쓰지 않고 replace를 써야 조사 파괴 없이 대체 가능
+                restored_text = restored_text.replace(fake_pii, real_pii)
 
         context.final_response = restored_text
 

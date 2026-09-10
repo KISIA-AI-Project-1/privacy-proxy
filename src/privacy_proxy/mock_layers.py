@@ -14,7 +14,6 @@ async def mock_l3_detection(context: ProxyContext) -> ProxyContext:
                     original_value=match.group(),
                     start_idx=match.start(),
                     end_idx=match.end(),
-                    layer="L3_Regex",
                     confidence=1.0,
                 )
             )
@@ -36,7 +35,6 @@ async def mock_l4_detection_ecommerce(context: ProxyContext) -> ProxyContext:
                     original_value=match.group(),
                     start_idx=match.start(),
                     end_idx=match.end(),
-                    layer="L4_Ecommerce",
                     confidence=0.95,
                 )
             )
