@@ -32,6 +32,13 @@ async def test_full_pipeline_success() -> None:
     with patch("privacy_proxy.pipeline.call_gemini_l7", side_effect=mock_call_llm):
         context = await run_privacy_pipeline(raw_input, user=mock_user)
 
+    with patch("privacy_proxy.pipeline.call_gemini_l7", side_effect=mock_call_llm):
+        context = await run_privacy_pipeline(raw_input, user=mock_user)
+
+    # 이 부분을 추가해서 서버에서 왜 실패했는지 에러 메시지를 출력하게 만듭니다
+    if context.status != "success":
+        print(f"\n[CI 에러 원인 확인] error: {context.error}\n")
+
     # 3. 파이프라인 상태 검증
     assert context.status == "success"
     assert context.error is None
