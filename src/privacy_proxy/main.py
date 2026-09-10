@@ -30,7 +30,7 @@ async def healthz() -> dict[str, str | Literal["ok"]]:
 @app.post("/v1/chat")
 async def process_chat(
     body: dict[str, Any],
-    user: UserContext = Depends(get_current_user), # noqa: B008
+    user: UserContext = Depends(get_current_user),  # noqa: B008
 ) -> dict[str, Any]:
     """
     [L1~L9 통합 엔드포인트]
