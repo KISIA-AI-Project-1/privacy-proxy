@@ -1,10 +1,11 @@
 from unittest.mock import patch
+
 import pytest
 from fastapi.testclient import TestClient
 
 from privacy_proxy.main import app
 from privacy_proxy.pipeline import run_privacy_pipeline
-from privacy_proxy.schemas import UserContext, ProxyContext
+from privacy_proxy.schemas import ProxyContext, UserContext
 
 client = TestClient(app)
 
