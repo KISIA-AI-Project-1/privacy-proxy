@@ -20,7 +20,10 @@ def test_healthz() -> None:
 @pytest.mark.asyncio
 async def test_full_pipeline_success() -> None:
     """L1부터 L9까지 정상 흐름(개인정보 탐지 -> 가명화 -> LLM 통신 -> 복원 -> 로그) 검증"""
-    raw_input = "안녕하세요 제 번호는 010-9999-8888이고 이메일은 test@example.com입니다."
+    raw_input = {
+    "model": "gpt-4o-mini",
+    "messages": [{"role": "user", "content": "안녕하세요 제 번호는 010-9999-8888이고 이메일은 test@example.com입니다."}],
+}
     mock_user = UserContext(user_id="test-user", role="user", department="Dev")
 
     # 1. 구글 서버 대신 일해줄 가짜 함수 정의
