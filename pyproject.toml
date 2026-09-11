@@ -11,6 +11,10 @@ dependencies = [
     "pydantic-settings>=2.7",
     "redis>=5.2",
     "cryptography>=44.0",
+    # l4/recognizers/가 전화번호 배제에 쓴다(L3와 동일 방식). presidio-analyzer(detection
+    # extra)의 전이 의존성으로 이미 lock엔 있었지만, recognizers는 extra 없이 단독으로
+    # 돌아야 하므로(torch 불필요) 직접 의존성으로 명시한다.
+    "phonenumbers>=9.0",
 ]
 
 # 탐지 계층(L3/L4)은 모델 의존성이 무겁다(torch, spacy, transformers).
