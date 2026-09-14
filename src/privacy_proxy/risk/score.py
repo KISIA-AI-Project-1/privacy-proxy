@@ -31,6 +31,18 @@ def assess_risk(context: ProxyContext) -> ProxyContext:
     started = perf_counter()
     context.validate_detected_spans()
 
+    classes = [(entity, privacy_class(entity)) for entity in context.detected_entities]
+    unsupported_types = sorted(
+        {
+            entity.entity_type.strip().upper()
+            for entity, kind in classes
+            if kind is PrivacyClass.GENERAL
+        }
+    )
+    if unsupported_types:
+        joined = ", ".join(unsupported_types)
+        raise ValueError(f"unsupported detected entity_type(s): {joined}")
+
     features = select_representative_qis(context.detected_entities)
     reasons = [feature.reason for feature in features]
     score = sum(feature.base_score for feature in features)
@@ -38,7 +50,6 @@ def assess_risk(context: ProxyContext) -> ProxyContext:
     score += bonus
     reasons.extend(combination_reasons)
 
-    classes = [(entity, privacy_class(entity)) for entity in context.detected_entities]
     direct = [entity for entity, kind in classes if kind is PrivacyClass.DIRECT]
     service = [entity for entity, kind in classes if kind is PrivacyClass.SERVICE]
     sensitive = [entity for entity, kind in classes if kind is PrivacyClass.SENSITIVE]

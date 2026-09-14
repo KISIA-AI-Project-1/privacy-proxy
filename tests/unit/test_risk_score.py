@@ -329,3 +329,41 @@ def test_invalid_span_is_rejected_before_scoring() -> None:
     )
     with pytest.raises(ValueError, match="span mismatch"):
         assess_risk(context)
+
+
+@pytest.mark.parametrize(
+    "entity_type",
+    [
+        "PERSON_EN",
+        "PERSON_KO",
+        "DATE_OF_BIRTH",
+        "KR_PASSPORT",
+        "KR_FRN",
+        "KR_DRIVER_LICENSE",
+        "ACCOUNT_NUMBER",
+        "ADDRESS_ROAD",
+        "ADDRESS_LOT",
+        "ADDRESS_DETAIL",
+    ],
+)
+def test_new_direct_identifier_contract_is_tokenized(entity_type: str) -> None:
+    result = assess_risk(context_for("테스트", [(entity_type, "테스트")]))
+
+    assert result.risk_score == 80.0
+    assert result.risk_level == "HIGH"
+    assert result.policy_action == "TOKENIZE"
+
+
+def test_kr_brn_is_protected_as_service_identifier() -> None:
+    result = assess_risk(context_for("123-45-67890", [("KR_BRN", "123-45-67890")]))
+
+    assert result.risk_score == 85.0
+    assert result.risk_level == "HIGH"
+    assert result.policy_action == "TOKENIZE"
+
+
+def test_unknown_detected_entity_fails_closed() -> None:
+    context = context_for("비밀값", [("UNREGISTERED_PRIVATE_VALUE", "비밀값")])
+
+    with pytest.raises(ValueError, match="unsupported detected entity_type"):
+        assess_risk(context)

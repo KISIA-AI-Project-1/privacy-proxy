@@ -42,6 +42,8 @@ class QIFeature:
 DIRECT_IDENTIFIERS = frozenset(
     {
         "PERSON",
+        "PERSON_EN",
+        "PERSON_KO",
         "NAME",
         "PHONE_NUMBER",
         "EMAIL_ADDRESS",
@@ -52,9 +54,17 @@ DIRECT_IDENTIFIERS = frozenset(
         "CREDIT_CARD",
         "IP_ADDRESS",
         "KR_RRN",
+        "KR_FRN",
         "RESIDENT_REGISTRATION_NUMBER",
+        "DATE_OF_BIRTH",
+        "KR_PASSPORT",
         "PASSPORT_NUMBER",
+        "KR_DRIVER_LICENSE",
         "DRIVER_LICENSE_NUMBER",
+        "ACCOUNT_NUMBER",
+        "ADDRESS_ROAD",
+        "ADDRESS_LOT",
+        "ADDRESS_DETAIL",
     }
 )
 
@@ -70,6 +80,7 @@ SERVICE_IDENTIFIERS = frozenset(
         "INVOICE_NUMBER",
         "PERSONAL_CUSTOMS_CODE",
         "CUSTOMS_CLEARANCE_ID",
+        "KR_BRN",
     }
 )
 
