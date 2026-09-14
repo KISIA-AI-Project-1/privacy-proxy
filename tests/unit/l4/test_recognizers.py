@@ -6,6 +6,7 @@
 
 import pytest
 from l4.recognizers import (
+    find_account_number,
     find_customer_id,
     find_customs_clearance_id,
     find_order_id,
@@ -204,3 +205,56 @@ def test_조사가_바로_붙어도_송장번호_매치() -> None:
 
     assert _types(results) == ["TRACKING_NUMBER"]
     assert results[0].original_value == "ABCD12345678"
+
+
+# ── ACCOUNT_NUMBER (2026-09-14, 5번째 타입) ──────────────────────────────
+
+
+def test_계좌번호_3그룹_은행명_앵커와_함께_매치() -> None:
+    results = find_account_number("국민은행 123456-01-987654로 환불해주세요")
+
+    assert _types(results) == ["ACCOUNT_NUMBER"]
+    assert results[0].original_value == "123456-01-987654"
+
+
+def test_계좌번호_줄임말_앵커도_매치_하고_3그룹_2그룹_안_겹친다() -> None:
+    """ "우리"처럼 은행명이 일반 단어와 겹쳐도 앵커로 쓴다.
+
+    "123-456-789012"의 뒷부분 "456-789012"도 2그룹 형태를 만족하지만, 같은
+    계좌번호를 두 번 잡으면 안 된다 — 3그룹 결과 하나만 남아야 한다.
+    """
+    results = find_account_number("우리 123-456-789012로 보내주세요")
+
+    assert len(results) == 1
+    assert results[0].entity_type == "ACCOUNT_NUMBER"
+    assert results[0].original_value == "123-456-789012"
+    assert results[0].confidence > 0.35  # 3그룹 base_score(0.45) 계열이어야 한다
+
+
+def test_계좌번호_형식_숫자가_없으면_줄임말_앵커만으로_오탐_안_함() -> None:
+    """계좌번호 형식 후보 자체가 없으면 "우리" 앵커가 있어도 아무 일도 안 난다."""
+    assert find_account_number("우리 이거 언제 배송돼요?") == []
+
+
+def test_계좌번호_예금주_앵커와_함께_매치() -> None:
+    results = find_account_number("신한 110-234-567890 예금주 확인 부탁드려요")
+
+    assert _types(results) == ["ACCOUNT_NUMBER"]
+    assert results[0].original_value == "110-234-567890"
+
+
+def test_주문번호는_계좌번호로_오매치_안_함() -> None:
+    """ "20260830-1234567"은 2그룹 형태와 자릿수가 안 맞아 후보 자체가 안 생긴다."""
+    assert find_account_number("주문번호 20260830-1234567") == []
+
+
+def test_카카오뱅크_7자리_그룹_회귀() -> None:
+    """실제 CS 검증 문장. 마지막 그룹 7자리라 초안 {2,6} 폭으로는 안 잡혔었다."""
+    results = find_account_number("카카오뱅크 3333-01-9872112로 입금 요망")
+
+    assert _types(results) == ["ACCOUNT_NUMBER"]
+    assert results[0].original_value == "3333-01-9872112"
+
+
+def test_하이픈_포함_사업자번호는_앵커_없으면_계좌번호로_안_잡힌다() -> None:
+    assert find_account_number("765-98-83000") == []
