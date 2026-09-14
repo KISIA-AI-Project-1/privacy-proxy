@@ -48,3 +48,16 @@ EXCLUDE_PATTERNS: list[re.Pattern[str]] = [
 ORDER_ID_DATE_EXCLUDE: re.Pattern[str] = re.compile(
     _L + r"\d{4}[-.]?\d{2}[-.]?\d{2}" + _R + r"(?!-\d)"
 )
+
+# ACCOUNT_NUMBER: 하이픈 포함 형식만(이번 범위). 은행마다 그룹 자릿수가 다르다
+# (국민 123456-01-987654 = 6-2-6, 카카오뱅크 3333-01-9872112 = 4-2-7).
+# 초안 지시서는 3그룹 각 자리를 {2,6}으로 줬는데, 카카오뱅크 실사용 예시
+# (마지막 그룹 7자리)가 그 폭으로 안 잡혀서 {2,7}로 넓혔다 — 그 예시가 회귀
+# 테스트로 남아 있어서 좁히면 바로 깨진다.
+#
+# 하이픈 없는 순수 숫자 형식은 이번 범위 제외. 사업자등록번호(하이픈 없음,
+# \d{10}, L3 확정, EXCLUDE_PATTERNS 참고)와 자릿수가 겹쳐 오탐 위험이 크다.
+# TODO: 정민우(L3) 회신 대기 — 하이픈 없는 사업자번호 실사용 빈도 확인되면
+# 하이픈 없는 계좌번호 형식 추가 여부 결정.
+ACCOUNT_NUMBER_3GRP: re.Pattern[str] = re.compile(_L + r"\d{2,7}-\d{2,7}-\d{2,7}" + _R)
+ACCOUNT_NUMBER_2GRP: re.Pattern[str] = re.compile(_L + r"\d{3,6}-\d{6,8}" + _R)

@@ -8,6 +8,7 @@
 """
 
 from l4.recognizers.recognizers import (
+    find_account_number,
     find_customer_id,
     find_customs_clearance_id,
     find_order_id,
@@ -15,6 +16,7 @@ from l4.recognizers.recognizers import (
 )
 
 __all__ = [
+    "find_account_number",
     "find_customer_id",
     "find_customs_clearance_id",
     "find_order_id",

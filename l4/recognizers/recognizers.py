@@ -13,6 +13,10 @@
 5. ``DetectedPII`` 생성. tier=RULE_ANCHORED, normalized=원문 그대로(조사 결합 없음).
 
 L4 recall 우선: 부분만 겹치는 L3 형식은 배제하지 않고 남긴다(2번의 "통째로").
+
+``find_account_number`` (계좌번호)만 위 순서에 하나 더 낀다 — 3그룹/2그룹 두
+형식이 같은 숫자열에서 겹쳐 매치될 수 있어서, 3그룹을 먼저 처리하고 2그룹은
+이미 잡힌 3그룹 span과 겹치면 버린다(``find_account_number`` docstring 참고).
 """
 
 from __future__ import annotations
@@ -23,7 +27,13 @@ import phonenumbers
 
 from l4.recognizers.anchors import ANCHORS
 from l4.recognizers.context import has_anchor, score
-from l4.recognizers.patterns import EXCLUDE_PATTERNS, ORDER_ID_DATE_EXCLUDE, PATTERNS
+from l4.recognizers.patterns import (
+    ACCOUNT_NUMBER_2GRP,
+    ACCOUNT_NUMBER_3GRP,
+    EXCLUDE_PATTERNS,
+    ORDER_ID_DATE_EXCLUDE,
+    PATTERNS,
+)
 from privacy_proxy.schemas import DetectedPII, DetectionTier
 
 _WINDOW = 25
@@ -181,4 +191,48 @@ def find_customer_id(text: str, segment_id: str = "seg-1") -> list[DetectedPII]:
                 segment_id,
             )
         )
+    return results
+
+
+def _overlaps(a_start: int, a_end: int, b_start: int, b_end: int) -> bool:
+    return a_start < b_end and b_start < a_end
+
+
+def find_account_number(text: str, segment_id: str = "seg-1") -> list[DetectedPII]:
+    """계좌번호. 3그룹(예: 123456-01-987654)과 2그룹(예: 123-456789) 두 형식.
+
+    두 패턴이 같은 숫자열에서 겹쳐 매치될 수 있다 — "1002-841-928102"(3그룹)의
+    뒷부분 "841-928102"가 2그룹 패턴도 만족한다. 3그룹을 먼저 잡고, 2그룹은
+    이미 잡힌 3그룹 span과 겹치면 버려서 같은 계좌번호를 두 번 emit하지 않는다.
+    """
+    results: list[DetectedPII] = []
+    covered: list[tuple[int, int]] = []
+
+    for match in ACCOUNT_NUMBER_3GRP.finditer(text):
+        if _excluded(text, match.start(), match.end()):
+            continue
+        found, distance = has_anchor(
+            text, match.start(), match.end(), ANCHORS["ACCOUNT_NUMBER"], _WINDOW
+        )
+        if not found:
+            continue
+        results.append(
+            _emit("ACCOUNT_NUMBER", "L4_RECOGNIZER_ACCOUNT", 0.45, match, distance, segment_id)
+        )
+        covered.append(match.span())
+
+    for match in ACCOUNT_NUMBER_2GRP.finditer(text):
+        if any(_overlaps(match.start(), match.end(), s, e) for s, e in covered):
+            continue
+        if _excluded(text, match.start(), match.end()):
+            continue
+        found, distance = has_anchor(
+            text, match.start(), match.end(), ANCHORS["ACCOUNT_NUMBER"], _WINDOW
+        )
+        if not found:
+            continue
+        results.append(
+            _emit("ACCOUNT_NUMBER", "L4_RECOGNIZER_ACCOUNT", 0.35, match, distance, segment_id)
+        )
+
     return results
