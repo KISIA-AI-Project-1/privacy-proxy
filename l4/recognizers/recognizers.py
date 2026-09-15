@@ -17,6 +17,13 @@ L4 recall 우선: 부분만 겹치는 L3 형식은 배제하지 않고 남긴다
 ``find_account_number`` (계좌번호)만 위 순서에 하나 더 낀다 — 3그룹/2그룹 두
 형식이 같은 숫자열에서 겹쳐 매치될 수 있어서, 3그룹을 먼저 처리하고 2그룹은
 이미 잡힌 3그룹 span과 겹치면 버린다(``find_account_number`` docstring 참고).
+
+``find_address_road``/``find_address_lot``/``find_address_detail`` (주소 3종)은
+이 순서를 안 탄다 — 도로명의 건물번호, 지번의 "번지"/"산", 상세주소의 "동"/
+"호"/"층"이 전부 정규식 리터럴 자체에 필수로 박혀 있어서 그 문자열이 곧
+자격 조건이다. 숫자만으로는 뭔지 알 수 없는 ID류(주문번호 등)와 달리 주소는
+그 자체로 의미가 확정되므로 ``has_anchor`` 조회가 따로 필요 없다. confidence도
+앵커 거리 기반 ``score()``가 아니라 형식(또는 DETAIL의 갈래)별 고정값.
 """
 
 from __future__ import annotations
@@ -30,6 +37,9 @@ from l4.recognizers.context import has_anchor, score
 from l4.recognizers.patterns import (
     ACCOUNT_NUMBER_2GRP,
     ACCOUNT_NUMBER_3GRP,
+    ADDRESS_DETAIL_PATTERN,
+    ADDRESS_LOT_PATTERN,
+    ADDRESS_ROAD_PATTERN,
     EXCLUDE_PATTERNS,
     ORDER_ID_DATE_EXCLUDE,
     PATTERNS,
@@ -37,6 +47,16 @@ from l4.recognizers.patterns import (
 from privacy_proxy.schemas import DetectedPII, DetectionTier
 
 _WINDOW = 25
+
+# ADDRESS_DETAIL: named group(recognizers.py의 ADDRESS_DETAIL_PATTERN 참고)별
+# confidence. 임의 초기값 — 동+호 조합이 가장 구체적이고, 층 단독은
+# "3층짜리 건물이에요" 처럼 일반 서술과 안 갈려서 가장 낮게 준다.
+# TODO(W7): 합성 평가셋 실측 후 조정.
+_ADDRESS_DETAIL_CONFIDENCE: dict[str, float] = {
+    "dongho": 0.6,
+    "ho": 0.45,
+    "floor": 0.25,
+}
 
 
 def _is_phone_number(candidate: str) -> bool:
@@ -235,4 +255,72 @@ def find_account_number(text: str, segment_id: str = "seg-1") -> list[DetectedPI
             _emit("ACCOUNT_NUMBER", "L4_RECOGNIZER_ACCOUNT", 0.35, match, distance, segment_id)
         )
 
+    return results
+
+
+def _emit_fixed(
+    entity_type: str,
+    source: str,
+    confidence: float,
+    match: re.Match[str],
+    segment_id: str,
+) -> DetectedPII:
+    """앵커 거리 기반 ``score()`` 없이 고정 confidence로 방출. 주소 3종 전용.
+
+    도로명·지번·상세주소는 자격 조건(건물번호/"번지"·"산"/"동"·"호"·"층")이
+    정규식 리터럴 자체에 있어 앵커까지의 거리라는 개념이 없다.
+    """
+    value = match.group()
+    return DetectedPII(
+        entity_type=entity_type,
+        original_value=value,
+        normalized=value,
+        start_idx=match.start(),
+        end_idx=match.end(),
+        confidence=confidence,
+        segment_id=segment_id,
+        tier=DetectionTier.RULE_ANCHORED,
+        source=source,
+    )
+
+
+def find_address_road(text: str, segment_id: str = "seg-1") -> list[DetectedPII]:
+    """도로명 + 건물번호. 건물번호가 정규식에 필수라 그 자체가 자격 조건이다.
+
+    "종로에서" 처럼 건물번호 없이 도로명만 오면 애초에 후보가 안 생긴다 —
+    도로명이 "종로" 같은 고유명사의 일부일 위험을 형식으로 차단한다.
+    """
+    return [
+        _emit_fixed("ADDRESS_ROAD", "L4_RECOGNIZER_ADDRESS_ROAD", 0.5, match, segment_id)
+        for match in ADDRESS_ROAD_PATTERN.finditer(text)
+    ]
+
+
+def find_address_lot(text: str, segment_id: str = "seg-1") -> list[DetectedPII]:
+    """지번. "번지"/"산" 리터럴이 정규식에 박혀 있어 그 자체가 자격 조건이다.
+
+    순수 숫자-숫자(예: 주문번호 형식)는 "번지"가 없어 애초에 후보가 안 생긴다.
+    """
+    return [
+        _emit_fixed("ADDRESS_LOT", "L4_RECOGNIZER_ADDRESS_LOT", 0.7, match, segment_id)
+        for match in ADDRESS_LOT_PATTERN.finditer(text)
+    ]
+
+
+def find_address_detail(text: str, segment_id: str = "seg-1") -> list[DetectedPII]:
+    """동/호/층. 세 갈래(동+호/호만/층만)로 오탐 위험이 달라 confidence를 나눈다.
+
+    ``ADDRESS_DETAIL_PATTERN`` 의 named group으로 어느 갈래가 매치됐는지 판별한다.
+    """
+    results: list[DetectedPII] = []
+    for match in ADDRESS_DETAIL_PATTERN.finditer(text):
+        branch = match.lastgroup
+        if branch is None:
+            continue  # 이론상 안 옴 — 세 named group 중 하나는 항상 매치된다.
+        confidence = _ADDRESS_DETAIL_CONFIDENCE[branch]
+        results.append(
+            _emit_fixed(
+                "ADDRESS_DETAIL", "L4_RECOGNIZER_ADDRESS_DETAIL", confidence, match, segment_id
+            )
+        )
     return results
