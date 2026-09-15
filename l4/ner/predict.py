@@ -5,7 +5,9 @@
 놓치는" 차이가 생기고, L4에서 그건 곧 개인정보 유출이다.
 
 ``alignment.py`` (조사 경계 중재)가 ``merge_bio_spans`` 뒤에 붙어 span 끝에
-딸려온 조사를 떼어낸다.
+딸려온 조사를 떼어낸다. ``predict_spans()`` 는 반환 직전에만 entity_type을
+KLUE-NER 라벨("PS"/"LC")에서 L5 계약 이름("PERSON_KO"/"LOCATION_INFORMAL")으로
+바꾼다 — ``l4/ner/labels.py`` 의 ``L4_ENTITY_TYPE_MAP``.
 """
 
 from __future__ import annotations
@@ -19,7 +21,7 @@ from transformers import AutoModelForTokenClassification, AutoTokenizer
 from l4.ner.alignment import arbitrate_josa
 from l4.ner.bio import Span, merge_bio_spans
 from l4.ner.data import expand_subword_to_char
-from l4.ner.labels import L4_ENTITY_TYPES, LabelSet
+from l4.ner.labels import L4_ENTITY_TYPE_MAP, L4_ENTITY_TYPES, LabelSet
 
 
 def load_model(model_dir: str | Path) -> tuple[Any, Any, LabelSet]:
@@ -65,6 +67,19 @@ def encode_and_merge(
     return merge_bio_spans(char_tags, text), offsets
 
 
+def _apply_entity_type_map(spans: list[Span]) -> list[Span]:
+    """L4 내부 라벨("PS"/"LC")을 L5와 확정한 계약 이름으로 바꾼다.
+
+    ``predict_spans()`` 가 반환하기 직전에만 쓴다 — 그 앞의 모든 처리
+    (``merge_bio_spans``, ``arbitrate_josa``, 학습·평가 경로)는 계속
+    KLUE-NER 라벨로 돈다. torch 의존 없이 순수 변환이라 모델 없이 테스트된다.
+    """
+    return [
+        Span(span.start, span.end, L4_ENTITY_TYPE_MAP[span.entity_type], span.text)
+        for span in spans
+    ]
+
+
 def predict_spans(
     text: str,
     model: Any,
@@ -72,9 +87,10 @@ def predict_spans(
     label_set: LabelSet,
     max_length: int = 512,
 ) -> list[Span]:
-    """평문 하나에서 엔티티 span 리스트를 뽑는다."""
+    """평문 하나에서 엔티티 span 리스트를 뽑는다. entity_type은 L5 계약 이름."""
     spans, offsets = encode_and_merge(text, model, tokenizer, label_set, max_length)
     spans = arbitrate_josa(spans, offsets, text)
     # L4가 실제로 쓰는 태그만 내보낸다. QT/DT/OG/TI는 주문번호 등을 잘못 잡는
     # 오탐 원인일 뿐이라 여기서 버린다 (RESULTS.md 이커머스 문맥 관찰 참고).
-    return [span for span in spans if span.entity_type in L4_ENTITY_TYPES]
+    filtered = [span for span in spans if span.entity_type in L4_ENTITY_TYPES]
+    return _apply_entity_type_map(filtered)
