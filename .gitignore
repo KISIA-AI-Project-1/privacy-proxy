@@ -57,6 +57,11 @@ logs/
 
 # 로컬 검증용 스크래치 스크립트 (커밋 안 함)
 l4/ner/try_it.py
+l4/recognizers/try_recognizers.py
+l4/try_pipeline.py
+
+# 세션↔Claude 인계용 상태 문서. 절대 커밋하지 않는다.
+/CLAUDE.md
 
 # 에디터·OS
 .idea/
