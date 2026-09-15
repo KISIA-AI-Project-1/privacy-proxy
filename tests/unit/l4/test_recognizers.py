@@ -115,7 +115,7 @@ def test_confidence_빠뜨리면_ValidationError() -> None:
     쪽이라 의도적으로 무시한다.
     """
     with pytest.raises(ValidationError):
-        DetectedPII(entity_type="X", original_value="y", start_idx=0, end_idx=1)  # type: ignore[call-arg]
+        DetectedPII(entity_type="X", original_value="y", start_idx=0, end_idx=1)
 
 
 def test_통관고유부호_confidence_상한_1로_잘린다() -> None:
@@ -261,6 +261,47 @@ def test_카카오뱅크_7자리_그룹_회귀() -> None:
 
 def test_하이픈_포함_사업자번호는_앵커_없으면_계좌번호로_안_잡힌다() -> None:
     assert find_account_number("765-98-83000") == []
+
+
+def test_계좌번호_은행_자릿수_조합_일치시_confidence_가산() -> None:
+    """국민 특유의 (3,2,4) 조합 + "국민" 앵커가 겹치면 보너스가 붙는다.
+
+    "농협"은 같은 자릿수·같은 앵커 거리지만 (3,2,4) 조합이 표에 없어 보너스가
+    안 붙는다 — 두 결과의 confidence 차이가 곧 보너스 크기여야 한다.
+    """
+    with_bonus = find_account_number("국민 345-67-8901로 보내주세요")
+    without_bonus = find_account_number("농협 345-67-8901로 보내주세요")
+
+    assert with_bonus[0].confidence - without_bonus[0].confidence == pytest.approx(0.12)
+
+
+def test_계좌번호_표에_없는_조합도_여전히_매치된다() -> None:
+    """카카오뱅크는 은행별 자릿수 표에 없다 — 보너스는 안 붙어도 emit은 된다."""
+    results = find_account_number("카카오뱅크 3333-01-9872112로 입금 요망")
+
+    assert _types(results) == ["ACCOUNT_NUMBER"]
+
+
+# ── 이메일 오탐 배제 ─────────────────────────────────────────────────────
+# ID 패턴들의 ASCII 경계 규칙이 '@'/'.'/'-'를 전부 비영숫자로 쳐서, 이메일
+# 안의 라벨(로컬파트·도메인·TLD) 하나하나가 독립된 후보로 오탐될 수 있었다.
+
+
+def test_이메일_로컬파트가_송장번호로_오매치_안_함() -> None:
+    """ "solution"(corp-solution의 일부)이 TRACKING_NUMBER 형식과 우연히 일치하던 버그."""
+    assert find_tracking_number("이메일: sjpark@corp-solution.co.kr") == []
+
+
+def test_이메일_배제가_다른_정상_탐지를_방해하지_않는다() -> None:
+    results = find_customer_id("고객번호 CU847213, 이메일: test@example.com")
+
+    assert _types(results) == ["CUSTOMER_ID"]
+    assert results[0].original_value == "CU847213"
+
+
+def test_긴_TLD_이메일도_배제된다() -> None:
+    """ ".solutions"처럼 TLD가 2자보다 길어도(TLD 폭을 {2,}로 열어둠) 전체가 배제된다."""
+    assert find_tracking_number("문의처: contact@shop.solutions") == []
 
 
 # ── 주소 3종 (2026-09-14) ────────────────────────────────────────────────
