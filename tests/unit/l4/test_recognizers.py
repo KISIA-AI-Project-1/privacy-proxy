@@ -7,6 +7,9 @@
 import pytest
 from l4.recognizers import (
     find_account_number,
+    find_address_detail,
+    find_address_lot,
+    find_address_road,
     find_customer_id,
     find_customs_clearance_id,
     find_order_id,
@@ -258,3 +261,98 @@ def test_카카오뱅크_7자리_그룹_회귀() -> None:
 
 def test_하이픈_포함_사업자번호는_앵커_없으면_계좌번호로_안_잡힌다() -> None:
     assert find_account_number("765-98-83000") == []
+
+
+# ── 주소 3종 (2026-09-14) ────────────────────────────────────────────────
+# 건물번호/"번지"·"산"/"동"·"호"·"층"이 정규식 리터럴 자체에 필수라 앵커 조회가
+# 없다 — 그 문자열이 곧 자격 조건이다.
+
+
+def test_도로명_건물번호와_함께_매치() -> None:
+    results = find_address_road("테헤란로 152에서 만나요")
+
+    assert _types(results) == ["ADDRESS_ROAD"]
+    assert results[0].original_value == "테헤란로 152"
+
+
+def test_지선도로명_로N길_형태도_매치() -> None:
+    """ "성수이로7길"처럼 로 뒤에 지선번호+길이 붙는 도로명주소 표준 명명법.
+
+    초안 정규식은 이걸 "성수이로7"(건물번호로 오인, "길"·실제 건물번호 "12"
+    유실)로 잘못 잘랐다 — `(?:\\d{1,3}길)?`을 끼워 지선도로명을 통째로 포함.
+    """
+    results = find_address_road("성수이로7길 12번 건물이요")
+
+    assert _types(results) == ["ADDRESS_ROAD"]
+    assert results[0].original_value == "성수이로7길 12"
+
+
+def test_도로명_조사가_바로_붙어도_매치() -> None:
+    """ "152로"의 "로"는 조사. \\b 유니코드 버그 회귀 방지."""
+    results = find_address_road("테헤란로152로 오시면 됩니다")
+
+    assert _types(results) == ["ADDRESS_ROAD"]
+    assert results[0].original_value == "테헤란로152"
+
+
+def test_건물번호_없으면_도로명_매치_안_함() -> None:
+    """ "종로"처럼 건물번호 없이 도로명만 오면 지명일 위험 — emit 안 함."""
+    assert find_address_road("종로에서 약속 있어요") == []
+
+
+def test_지번_번지_매치() -> None:
+    results = find_address_lot("123-4번지에 거주합니다")
+
+    assert _types(results) == ["ADDRESS_LOT"]
+    assert results[0].original_value == "123-4번지"
+
+
+def test_지번_산_매치() -> None:
+    results = find_address_lot("산 15-1에 위치한 임야입니다")
+
+    assert _types(results) == ["ADDRESS_LOT"]
+    assert results[0].original_value == "산 15-1"
+
+
+def test_번지_없으면_주문번호_형식이_지번으로_안_잡힌다() -> None:
+    assert find_address_lot("20260830-1234가 제 주문번호예요") == []
+
+
+def test_상세주소_동호_매치() -> None:
+    results = find_address_detail("101동 1502호로 배송해주세요")
+
+    assert _types(results) == ["ADDRESS_DETAIL"]
+    assert results[0].original_value == "101동 1502호"
+    assert results[0].confidence == 0.6
+
+
+def test_상세주소_호만_매치() -> None:
+    results = find_address_detail("1502호인데요")
+
+    assert _types(results) == ["ADDRESS_DETAIL"]
+    assert results[0].original_value == "1502호"
+    assert results[0].confidence == 0.45
+
+
+def test_상세주소_조사가_바로_붙어도_매치() -> None:
+    results = find_address_detail("1502호이고")
+
+    assert _types(results) == ["ADDRESS_DETAIL"]
+    assert results[0].original_value == "1502호"
+
+
+def test_상세주소_층만_있으면_confidence_낮다() -> None:
+    results = find_address_detail("18층 문 앞에 놔주세요")
+
+    assert _types(results) == ["ADDRESS_DETAIL"]
+    assert results[0].original_value == "18층"
+    assert results[0].confidence == 0.25
+
+
+def test_상세주소_일반_서술도_매치되지만_confidence_가장_낮다() -> None:
+    """ "3층짜리 건물이에요"는 사실 오탐에 가깝다 — 인지하되 낮은 confidence로 남긴다."""
+    results = find_address_detail("이 건물은 3층짜리예요")
+
+    assert _types(results) == ["ADDRESS_DETAIL"]
+    assert results[0].confidence == 0.25
+    assert results[0].confidence < 0.45  # 호/동호 갈래보다 뚜렷이 낮다
