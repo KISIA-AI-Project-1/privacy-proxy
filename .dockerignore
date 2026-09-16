@@ -1,0 +1,19 @@
+# 절대 포함되면 안 되는 보안 파일
+.env
+.env.*
+*.pem
+*.key
+
+# 불필요한 로컬 가상환경 및 캐시
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 깃 및 테스트 관련
+.git/
+.gitignore
+.pytest_cache/
+tests/
