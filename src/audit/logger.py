@@ -1,5 +1,6 @@
 import json
 import logging
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 
 from privacy_proxy.schemas import ProxyContext
@@ -10,32 +11,61 @@ logger = logging.getLogger(__name__)
 
 async def audit_log_l9(context: ProxyContext) -> ProxyContext:
     """
-    [L9 레이어]
+    [L9 레이어: 비동기 스트리밍 로거]
     """
-    # 1. 총 처리 시간 계산
-    try:
-        start_time = datetime.fromisoformat(context.created_at.replace("Z", "+00:00"))
-        end_time = datetime.now(UTC)
+    if context.status == "failed" or not hasattr(context, "final_response") or not context.final_response:
+        _print_log(context)
+        return context
 
-        latency = (end_time - start_time).total_seconds() * 1000
-        context.latency_ms["total_pipeline"] = round(latency, 2)
-    except Exception as e:
-        context.error = f"시간 계산 에러: {e!s}"
-        context.latency_ms["total_pipeline"] = -1.0
+    async def _logging_stream_wrapper(original_stream: AsyncGenerator[str, None]) -> AsyncGenerator[str, None]:
+        full_response_text = ""
+        first_token_time = None
 
-    # 2. 민감 정보 및 거대 JSON 페이로드 제외를 통한 가독성 확보
+        try:
+            async for chunk in original_stream:
+                if first_token_time is None:
+                    first_token_time = datetime.now(UTC)
+
+                full_response_text += chunk
+                yield chunk
+
+        finally:
+            end_time = datetime.now(UTC)
+            start_time = datetime.fromisoformat(context.created_at.replace("Z", "+00:00"))
+
+            if first_token_time:
+                context.latency_ms["ttft"] = round((first_token_time - start_time).total_seconds() * 1000, 2)
+            context.latency_ms["total_pipeline"] = round((end_time - start_time).total_seconds() * 1000, 2)
+
+            context.final_response_log = full_response_text
+
+            _print_log(context)
+
+
+    context.final_response = _logging_stream_wrapper(context.final_response)
+
+    return context
+
+
+def _print_log(context: ProxyContext) -> None:
+    """
+    [추가] 실제 터미널에 JSON 포맷으로 로그를 찍는 분리된 함수
+    """
     safe_log_data = context.model_dump(
-        exclude_none=True, exclude={"parsed_request", "reconstructed_body"}
+        exclude_none=True,
+        exclude={"parsed_request", "reconstructed_body", "llm_raw_response", "final_response"}
     )
 
-    # 3. 터미널 로깅 및 상태 분기 출력
+    if hasattr(context, "final_response_log"):
+        safe_log_data["final_response"] = context.final_response_log
+
     separator = "=" * 50
     logger.info(f"\n{separator}")
 
     if context.status == "success":
-        logger.info(
-            f" [L9 Audit Log] Pipeline SUCCESS (Latency: {context.latency_ms.get('total_pipeline', 0)}ms)"
-        )
+        ttft = context.latency_ms.get('ttft', 0)
+        total = context.latency_ms.get('total_pipeline', 0)
+        logger.info(f" [L9 Audit Log] Pipeline SUCCESS (TTFT: {ttft}ms, Total: {total}ms)")
     else:
         logger.info(" [L9 Audit Log] Pipeline FAILED")
         if context.error:
@@ -44,5 +74,3 @@ async def audit_log_l9(context: ProxyContext) -> ProxyContext:
     logger.info(separator)
     logger.info(json.dumps(safe_log_data, indent=2, ensure_ascii=False))
     logger.info(f"{separator}\n")
-
-    return context

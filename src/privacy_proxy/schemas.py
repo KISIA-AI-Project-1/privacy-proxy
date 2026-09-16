@@ -5,6 +5,40 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+
+# 엔티티타입 Enum추가
+class EntityType(StrEnum):
+    # [유지] L3 기본 통신/계정 식별자
+    PHONE = "PHONE"
+    EMAIL = "EMAIL"
+
+    # 법적/행정 식별자 (L3/L4 공통 대응)
+    RRN = "RRN"  # 주민등록번호 / 외국인등록번호
+    BUSINESS_REGISTRATION_NUMBER = "BUSINESS_REGISTRATION_NUMBER"  # 사업자등록번호
+
+    # L4 NER 엔터티
+    PERSON_KO = "PERSON_KO"  # NAME -> 한국어 인명(조사 분리 대응)
+    LOCATION_INFORMAL = "LOCATION_INFORMAL"  # 비정형 지역 표기
+
+    # L4 이커머스 도메인 Recognizer 8종
+    CUSTOMS_CLEARANCE_ID = "CUSTOMS_CLEARANCE_ID"  # 개인통관고유부호
+    ORDER_ID = "ORDER_ID"
+    TRACKING_NUMBER = "TRACKING_NUMBER"
+    CUSTOMER_ID = "CUSTOMER_ID"
+    ACCOUNT_NUMBER = "ACCOUNT_NUMBER"
+    ADDRESS_ROAD = "ADDRESS_ROAD"  # ADDRESS 세분화 (도로명)
+    ADDRESS_LOT = "ADDRESS_LOT"  # ADDRESS 세분화 (지번)
+    ADDRESS_DETAIL = "ADDRESS_DETAIL"  # ADDRESS 세분화 (동/호수 등 상세)
+
+    # L4 민감정보(Sensitive) 4종 사전 반영
+    SENSITIVE_HEALTH = "SENSITIVE_HEALTH"
+    SENSITIVE_RELIGION = "SENSITIVE_RELIGION"
+    SENSITIVE_FAMILY = "SENSITIVE_FAMILY"
+    SENSITIVE_FINANCIAL = "SENSITIVE_FINANCIAL"
+
+    # 예외 및 미분류 처리용
+    ETC = "ETC"
+
 # -------------------------------------------------------------
 # 1. [L4] 추가 요청 사항
 # deterministic > rule_anchored > model > candidate
@@ -50,7 +84,7 @@ class ParsedRequest(BaseModel):
 # 3. [L3 ~ L4] 탐지 레이어 모델 (기존 유지)
 # -------------------------------------------------------------
 class DetectedPII(BaseModel):
-    entity_type: str
+    entity_type: EntityType | str
     original_value: str
     start_idx: int
     end_idx: int
@@ -101,8 +135,9 @@ class ProxyContext(BaseModel):
 
     # L7 ~ L9 (재조립, 중계, 복원, 감사)
     reconstructed_body: dict[str, Any] = Field(default_factory=dict)
-    llm_raw_response: str | None = None
-    final_response: str | None = None
+    llm_raw_response: Any = Field(default=None, exclude=True)
+    final_response: Any = Field(default=None, exclude=True)
+    final_response_log: str | None = Field(default=None, exclude=True)
     latency_ms: dict[str, float] = Field(default_factory=dict)
     status: str = "success"
     error: str | None = None
