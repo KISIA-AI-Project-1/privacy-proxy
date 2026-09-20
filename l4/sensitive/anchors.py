@@ -2,11 +2,22 @@
 ``l4/recognizers/anchors.py``와 같은 이유로 파일을 분리한다.
 
 여기서는 형식 정규식이 없어 앵커 자체가 탐지 대상이다 — 그래서 이 목록의
-내용이 곧 recall/precision을 직접 결정한다. 시드 그대로 반영, 필터링 안 함.
-위험도 판단은 ``recognizers.py`` 모듈 docstring 참고.
+내용이 곧 recall/precision을 직접 결정한다. 시드를 기본으로 반영했고 필터링은
+안 한다. 위험도 판단은 ``recognizers.py`` 모듈 docstring 참고. 시드에서 바꾼 것:
+
+- FAMILY에 "사별" 추가("돌아가신"도 유지). 없으면 사별 진술이 1단계에서 아예
+  안 잡혀 2단계 모델에 도달하지 못한다.
+- RELIGION의 "절" 단독 제거. "계절"·"시절"·"명절"·"적절"·"조절"·"절차" 등에 걸려
+  RELIGION 매치의 대부분(코퍼스 실측 93%)이 오탐이었다. 배제 단어 목록은 "절"이
+  든 어절이 수백 종이라 끝이 없어서, 사찰 뜻으로 쓰인 좁은 형태만 남겼다.
+
+``WORD_START_ANCHORS`` 의 앵커는 앞 글자가 한글이 아닐 때만 인정한다
+(``context.find_anchor_spans``). "회사별"의 "사별", "명절에"의 "절에"를 막는다.
 """
 
 from __future__ import annotations
+
+WORD_START_ANCHORS: frozenset[str] = frozenset({"사별", "절에", "절을 다니", "절 다니", "절 다녀"})
 
 ANCHORS: dict[str, list[str]] = {
     "SENSITIVE_HEALTH": [
@@ -31,7 +42,10 @@ ANCHORS: dict[str, list[str]] = {
         "종교",
         "교회",
         "성당",
-        "절",
+        "절에",
+        "절을 다니",
+        "절 다니",
+        "절 다녀",
         "불교",
         "기독교",
         "천주교",
@@ -48,6 +62,7 @@ ANCHORS: dict[str, list[str]] = {
         "아내가",
         "부모님이",
         "돌아가신",
+        "사별",
         "이혼",
         "재혼",
         "입양",

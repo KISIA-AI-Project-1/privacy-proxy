@@ -12,17 +12,18 @@ confidence는 앵커 거리 개념이 없어 카테고리 공통 고정값이다
 순수 어휘 매치라 정밀도가 가장 낮다 — 최종 판단을 L5로 넘기라는 신호로
 의도적으로 가장 낮은 tier를 준다.
 
-**주의 (시드는 그대로 반영, 필터링 안 함):** 일부 앵커는 이커머스 CS
-문장에서 민감정보와 무관하게도 흔히 등장해 오탐 위험이 크다 — "장애"는
+**주의 (시드를 기본으로 반영, 필터링 안 함 — 바꾼 두 가지는 anchors.py 참고):**
+일부 앵커는 이커머스 CS 문장에서 민감정보와 무관하게도 흔히 등장해 오탐
+위험이 크다 — "장애"는
 "배송 시스템 장애"·"네트워크 장애"처럼 고장을 뜻하는 CS 상투어에도 흔히
 쓰이고, "아이가"/"남편이"/"아내가"는 단순 구매 후기("남편이 좋아해요")에도
 흔하다. 경계를 확정하지 않는 설계 자체가 이런 오탐을 어느 정도 감수하는
-전제라 시드를 그대로 반영했다 — 판단은 호출부(L5) 몫으로 미룬다. 실측은 W7.
+전제라 시드를 기본으로 반영했다 — 판단은 호출부(L5) 몫으로 미룬다. 실측은 W7.
 """
 
 from __future__ import annotations
 
-from l4.sensitive.anchors import ANCHORS
+from l4.sensitive.anchors import ANCHORS, WORD_START_ANCHORS
 from l4.sensitive.context import find_anchor_spans
 from privacy_proxy.schemas import DetectedPII, DetectionTier
 
@@ -51,7 +52,7 @@ def _emit(
 def _find_sensitive(category: str, source: str, text: str, segment_id: str) -> list[DetectedPII]:
     return [
         _emit(category, source, text, start, end, segment_id)
-        for start, end, _ in find_anchor_spans(text, ANCHORS[category])
+        for start, end, _ in find_anchor_spans(text, ANCHORS[category], WORD_START_ANCHORS)
     ]
 
 
