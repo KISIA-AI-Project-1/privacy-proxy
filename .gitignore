@@ -59,6 +59,8 @@ logs/
 l4/ner/try_it.py
 l4/recognizers/try_recognizers.py
 l4/try_pipeline.py
+l4/sensitive/data/
+l4/sensitive/prompts/
 
 # 세션↔Claude 인계용 상태 문서. 절대 커밋하지 않는다.
 /CLAUDE.md
