@@ -1,4 +1,6 @@
+import json
 import os
+from collections.abc import AsyncGenerator
 from typing import Any
 
 import httpx
@@ -15,7 +17,7 @@ PRIVACY_SYSTEM_SKILL = """
 당신은 개인정보 보호 프록시(Privacy Proxy)를 거쳐 사용자와 소통하는 AI 어시스턴트입니다.
 사용자의 입력 데이터는 프라이버시 보호를 위해 가짜 개인정보(예: 홍길동, 010-123-456 등)로 대체(가명화)되어 전달됩니다.
 
-## CRITICAL RULES (절대 규칙)
+## (절대 규칙)
 - 입력된 텍스트에 포함된 가짜 이름, 전화번호, 이메일 등의 가명화된 정보는 시스템에서 임의로 치환된 것입니다.
 - 답변을 생성할 때, 사용자가 보낸 가짜 정보(예: 홍길동님)를 그대로 인용하거나 자연스럽게 사용하여 문맥의 일관성을 유지하십시오.
 - 실제 개인정보를 유추하거나 원래의 진짜 정보가 무엇인지 언급하거나 되묻지 마십시오.
@@ -26,7 +28,6 @@ PRIVACY_SYSTEM_SKILL = """
 async def call_gemini_l7(context: ProxyContext) -> ProxyContext:
     """
     [L7: LLM 중계 레이어]
-    가명화가 완료된 재조립 JSON에 시스템 프롬프트를 주입하고 벤더 서버로 전송합니다.
     """
     if context.status != "success" or not context.parsed_request:
         return context
@@ -36,26 +37,24 @@ async def call_gemini_l7(context: ProxyContext) -> ProxyContext:
 
     _inject_system_prompt(vendor, body)
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        try:
-            if vendor == "openai":
-                context.llm_raw_response = await _call_openai(client, body)
-            elif vendor == "anthropic":
-                context.llm_raw_response = await _call_claude(client, body)
-            elif vendor == "gemini":
-                context.llm_raw_response = await _call_gemini(client, body)
-            else:
-                raise ValueError(f"지원하지 않는 벤더입니다: {vendor}")
+    try:
+        if vendor == "openai":
+            context.llm_raw_response = _stream_openai(body)
+        elif vendor == "anthropic":
+            context.llm_raw_response = _stream_claude(body)
+        elif vendor == "gemini":
+            context.llm_raw_response = _stream_gemini(body)
+        else:
+            raise ValueError(f"지원하지 않는 벤더입니다: {vendor}")
 
-        except Exception as e:
-            context.status = "failed"
-            context.error = f"L7 LLM Request Error: {e!s}"
+    except Exception as e:
+        context.status = "failed"
+        context.error = f"L7 LLM Request Error: {e!s}"
 
     return context
 
 
 def _inject_system_prompt(vendor: str, body: dict[str, Any]) -> None:
-    """각 LLM 벤더의 JSON 구조에 맞춰 시스템 프롬프트를 안전하게 삽입합니다."""
     if vendor == "openai":
         messages = body.setdefault("messages", [])
         if not any(msg.get("role") == "system" for msg in messages):
@@ -73,41 +72,100 @@ def _inject_system_prompt(vendor: str, body: dict[str, Any]) -> None:
             }
 
 
-async def _call_openai(client: httpx.AsyncClient, body: dict[str, Any]) -> str:
+async def _stream_openai(body: dict[str, Any]) -> AsyncGenerator[str, None]:
     headers = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
         "Content-Type": "application/json",
     }
-    response = await client.post(
-        "https://api.openai.com/v1/chat/completions",
-        headers=headers,
-        json=body,
-    )
-    response.raise_for_status()
-    return str(response.json()["choices"][0]["message"]["content"])
+    body["stream"] = True
+
+    async with (
+        httpx.AsyncClient(timeout=30.0) as client,
+        client.stream(
+            "POST",
+            "https://api.openai.com/v1/chat/completions",
+            headers=headers,
+            json=body,
+        ) as response,
+    ):
+        response.raise_for_status()
+
+        async for line in response.aiter_lines():
+            if line.startswith("data: "):
+                data_str = line[6:].strip()
+                if data_str == "[DONE]":
+                    break
+                try:
+                    data_json = json.loads(data_str)
+                    chunk = data_json["choices"][0]["delta"].get("content", "")
+                    if chunk:
+                        yield chunk
+                except json.JSONDecodeError:
+                    continue
 
 
-async def _call_claude(client: httpx.AsyncClient, body: dict[str, Any]) -> str:
+async def _stream_claude(body: dict[str, Any]) -> AsyncGenerator[str, None]:
+    """
+    [Claude API 전용 스트리밍 어댑터]
+    """
     headers = {
         "x-api-key": CLAUDE_API_KEY,
         "anthropic-version": "2023-06-01",
         "Content-Type": "application/json",
     }
-    response = await client.post(
-        "https://api.anthropic.com/v1/messages",
-        headers=headers,
-        json=body,
-    )
-    response.raise_for_status()
-    return str(response.json()["content"][0]["text"])
+    body["stream"] = True
+
+    async with (
+        httpx.AsyncClient(timeout=30.0) as client,
+        client.stream(
+            "POST",
+            "https://api.anthropic.com/v1/messages",
+            headers=headers,
+            json=body,
+        ) as response,
+    ):
+        response.raise_for_status()
+
+        async for line in response.aiter_lines():
+            if line.startswith("data: "):
+                data_str = line[6:].strip()
+                try:
+                    data_json = json.loads(data_str)
+                    if data_json.get("type") == "content_block_delta":
+                        chunk = data_json["delta"].get("text", "")
+                        if chunk:
+                            yield chunk
+                except json.JSONDecodeError:
+                    continue
 
 
-async def _call_gemini(client: httpx.AsyncClient, body: dict[str, Any]) -> str:
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{body.get('model', 'gemini-1.5-pro')}:generateContent?key={GEMINI_API_KEY}"
-    response = await client.post(
-        url,
-        headers={"Content-Type": "application/json"},
-        json=body,
-    )
-    response.raise_for_status()
-    return str(response.json()["candidates"][0]["content"]["parts"][0]["text"])
+async def _stream_gemini(body: dict[str, Any]) -> AsyncGenerator[str, None]:
+    """
+    [Gemini API 전용 스트리밍 어댑터]
+    """
+    model_name = body.get("model", "gemini-1.5-pro")
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:streamGenerateContent?alt=sse&key={GEMINI_API_KEY}"
+
+    async with (
+        httpx.AsyncClient(timeout=30.0) as client,
+        client.stream(
+            "POST",
+            url,
+            headers={"Content-Type": "application/json"},
+            json=body,
+        ) as response,
+    ):
+        response.raise_for_status()
+
+        async for line in response.aiter_lines():
+            if line.startswith("data: "):
+                data_str = line[6:].strip()
+                try:
+                    data_json = json.loads(data_str)
+                    chunk = data_json["candidates"][0]["content"]["parts"][0].get("text", "")
+                    if chunk:
+                        yield chunk
+
+                except (json.JSONDecodeError, KeyError, IndexError):
+                    continue

@@ -22,7 +22,16 @@ async def run_privacy_pipeline(body: dict[str, Any], user: UserContext) -> Proxy
     3. L2: 가명화된 텍스트로 원본 JSON 구조 복원 (rebuild)
     4. L7~L9: LLM 호출, 복원, 감사 로깅
     """
+    if user is None:
+        user = UserContext(user_id="test_user", role="user")
+
     context = ProxyContext(user=user, user_role=user.role)
+
+    if isinstance(body, str):
+        body = {
+            "model": "gpt-4o-mini",
+            "messages": [{"role": "user", "content": body}],
+        }
 
     # [L2] 요청 파싱 (JSON -> TextSegment 리스트)
     try:

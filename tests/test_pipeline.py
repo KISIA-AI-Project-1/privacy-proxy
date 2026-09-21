@@ -1,3 +1,4 @@
+from collections.abc import AsyncGenerator
 from unittest.mock import patch
 
 import pytest
@@ -33,17 +34,19 @@ async def test_full_pipeline_success() -> None:
 
     # 1. 구글 서버 대신 일해줄 가짜 함수 정의
     async def mock_call_llm(context: ProxyContext) -> ProxyContext:
-        context.llm_raw_response = f"응답: {context.anonymized_prompt}"
+        async def mock_stream() -> AsyncGenerator[str, None]:
+            yield "응답: "
+            yield context.anonymized_prompt or ""
+            yield " (테스트 완료)"
+
+        context.llm_raw_response = mock_stream()
         return context
 
     # 2. call_gemini_l7을 가짜 함수로 가로채기(patch)한 상태에서 파이프라인 실행
     with patch("privacy_proxy.pipeline.call_gemini_l7", side_effect=mock_call_llm):
         context = await run_privacy_pipeline(raw_input, user=mock_user)
 
-    with patch("privacy_proxy.pipeline.call_gemini_l7", side_effect=mock_call_llm):
-        context = await run_privacy_pipeline(raw_input, user=mock_user)
-
-    # 이 부분을 추가해서 서버에서 왜 실패했는지 에러 메시지를 출력하게 만듭니다
+    # 에러출력
     if context.status != "success":
         print(f"\n[CI 에러 원인 확인] error: {context.error}\n")
 
