@@ -41,7 +41,7 @@ async def call_gemini_l7(context: ProxyContext) -> ProxyContext:
         if vendor == "openai":
             context.llm_raw_response = _stream_openai(body)
         elif vendor == "anthropic":
-                context.llm_raw_response = _stream_claude(body)
+            context.llm_raw_response = _stream_claude(body)
         elif vendor == "gemini":
             context.llm_raw_response = _stream_gemini(body)
         else:
@@ -79,12 +79,15 @@ async def _stream_openai(body: dict[str, Any]) -> AsyncGenerator[str, None]:
     }
     body["stream"] = True
 
-    async with httpx.AsyncClient(timeout=30.0) as client, client.stream(
-        "POST",
-        "https://api.openai.com/v1/chat/completions",
-        headers=headers,
-        json=body,
-    ) as response:
+    async with (
+        httpx.AsyncClient(timeout=30.0) as client,
+        client.stream(
+            "POST",
+            "https://api.openai.com/v1/chat/completions",
+            headers=headers,
+            json=body,
+        ) as response,
+    ):
         response.raise_for_status()
 
         async for line in response.aiter_lines():
@@ -112,12 +115,15 @@ async def _stream_claude(body: dict[str, Any]) -> AsyncGenerator[str, None]:
     }
     body["stream"] = True
 
-    async with httpx.AsyncClient(timeout=30.0) as client, client.stream(
-        "POST",
-        "https://api.anthropic.com/v1/messages",
-        headers=headers,
-        json=body,
-    ) as response:
+    async with (
+        httpx.AsyncClient(timeout=30.0) as client,
+        client.stream(
+            "POST",
+            "https://api.anthropic.com/v1/messages",
+            headers=headers,
+            json=body,
+        ) as response,
+    ):
         response.raise_for_status()
 
         async for line in response.aiter_lines():
@@ -137,16 +143,19 @@ async def _stream_gemini(body: dict[str, Any]) -> AsyncGenerator[str, None]:
     """
     [Gemini API 전용 스트리밍 어댑터]
     """
-    model_name = body.get('model', 'gemini-1.5-pro')
+    model_name = body.get("model", "gemini-1.5-pro")
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:streamGenerateContent?alt=sse&key={GEMINI_API_KEY}"
 
-    async with httpx.AsyncClient(timeout=30.0) as client, client.stream(
-        "POST",
-        url,
-        headers={"Content-Type": "application/json"},
-        json=body,
-    ) as response:
+    async with (
+        httpx.AsyncClient(timeout=30.0) as client,
+        client.stream(
+            "POST",
+            url,
+            headers={"Content-Type": "application/json"},
+            json=body,
+        ) as response,
+    ):
         response.raise_for_status()
 
         async for line in response.aiter_lines():

@@ -7,8 +7,9 @@ from restore.restorer import restore_l8
 
 
 async def mock_l7_stream(text: str) -> AsyncGenerator[str, None]:
-    for chunk in [text[i:i+3] for i in range(0, len(text), 3)]:
+    for chunk in [text[i : i + 3] for i in range(0, len(text), 3)]:
         yield chunk
+
 
 @pytest.mark.asyncio
 async def test_restore_l8_success() -> None:

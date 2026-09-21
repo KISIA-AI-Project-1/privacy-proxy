@@ -13,11 +13,17 @@ async def audit_log_l9(context: ProxyContext) -> ProxyContext:
     """
     [L9 레이어: 비동기 스트리밍 로거]
     """
-    if context.status == "failed" or not hasattr(context, "final_response") or not context.final_response:
+    if (
+        context.status == "failed"
+        or not hasattr(context, "final_response")
+        or not context.final_response
+    ):
         _print_log(context)
         return context
 
-    async def _logging_stream_wrapper(original_stream: AsyncGenerator[str, None]) -> AsyncGenerator[str, None]:
+    async def _logging_stream_wrapper(
+        original_stream: AsyncGenerator[str, None],
+    ) -> AsyncGenerator[str, None]:
         full_response_text = ""
         first_token_time = None
 
@@ -34,13 +40,16 @@ async def audit_log_l9(context: ProxyContext) -> ProxyContext:
             start_time = datetime.fromisoformat(context.created_at.replace("Z", "+00:00"))
 
             if first_token_time:
-                context.latency_ms["ttft"] = round((first_token_time - start_time).total_seconds() * 1000, 2)
-            context.latency_ms["total_pipeline"] = round((end_time - start_time).total_seconds() * 1000, 2)
+                context.latency_ms["ttft"] = round(
+                    (first_token_time - start_time).total_seconds() * 1000, 2
+                )
+            context.latency_ms["total_pipeline"] = round(
+                (end_time - start_time).total_seconds() * 1000, 2
+            )
 
             context.final_response_log = full_response_text
 
             _print_log(context)
-
 
     context.final_response = _logging_stream_wrapper(context.final_response)
 
@@ -53,7 +62,7 @@ def _print_log(context: ProxyContext) -> None:
     """
     safe_log_data = context.model_dump(
         exclude_none=True,
-        exclude={"parsed_request", "reconstructed_body", "llm_raw_response", "final_response"}
+        exclude={"parsed_request", "reconstructed_body", "llm_raw_response", "final_response"},
     )
 
     if hasattr(context, "final_response_log"):
@@ -63,8 +72,8 @@ def _print_log(context: ProxyContext) -> None:
     logger.info(f"\n{separator}")
 
     if context.status == "success":
-        ttft = context.latency_ms.get('ttft', 0)
-        total = context.latency_ms.get('total_pipeline', 0)
+        ttft = context.latency_ms.get("ttft", 0)
+        total = context.latency_ms.get("total_pipeline", 0)
         logger.info(f" [L9 Audit Log] Pipeline SUCCESS (TTFT: {ttft}ms, Total: {total}ms)")
     else:
         logger.info(" [L9 Audit Log] Pipeline FAILED")

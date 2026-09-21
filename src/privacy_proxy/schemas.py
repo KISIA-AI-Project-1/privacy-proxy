@@ -39,6 +39,7 @@ class EntityType(StrEnum):
     # 예외 및 미분류 처리용
     ETC = "ETC"
 
+
 # -------------------------------------------------------------
 # 1. [L4] 추가 요청 사항
 # deterministic > rule_anchored > model > candidate
