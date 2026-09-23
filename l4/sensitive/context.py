@@ -14,6 +14,16 @@ def _is_hangul(ch: str) -> bool:
     return "가" <= ch <= "힣"
 
 
+def window_text(text: str, start: int, end: int, chars: int = 60) -> str:
+    """앵커 span 주변 문자 윈도우 — 2단계 모델 입력용.
+
+    문장 전체가 아니라 이 조각만 모델에 넣는다(``l4/sensitive/predict.py``,
+    CLAUDE.md "2단계 설계"). 문자 단위로 넉넉히 자르고 최종 토큰 길이 제한은
+    토크나이저의 truncation에 맡긴다 — 토큰 경계를 여기서 맞출 필요는 없다.
+    """
+    return text[max(0, start - chars) : end + chars]
+
+
 def find_anchor_spans(
     text: str,
     anchors: list[str],
