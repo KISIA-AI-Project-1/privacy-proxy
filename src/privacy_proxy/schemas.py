@@ -85,18 +85,23 @@ class ParsedRequest(BaseModel):
 # 3. [L3 ~ L4] 탐지 레이어 모델 (기존 유지)
 # -------------------------------------------------------------
 class DetectedPII(BaseModel):
-    entity_type: EntityType | str
-    original_value: str
+    # PD-005 canonical field order.
+    #
+    # Transitional defaults for segment_id / source / tier / normalized
+    # are intentionally preserved until the legacy mock + multi-segment
+    # boundary is migrated without inventing PD-010 coordinate semantics.
+    segment_id: str = "seg-1"
     start_idx: int
     end_idx: int
-    confidence: float = Field(..., ge=0.0, le=1.0)
-    segment_id: str = "seg-1"
-
-    normalized: str = ""  # 요청 사항 기본값 제공용
-
-    # 우선순위
+    entity_type: EntityType | str
+    confidence: float | None = Field(..., ge=0.0, le=1.0)
+    source: str = Field(
+        default="unknown",
+        description="탐지 출처 (예: L3_Regex, L4_BERT)",
+    )
     tier: DetectionTier = DetectionTier.MODEL
-    source: str = Field(default="unknown", description="탐지 출처 (예: L3_Regex, L4_BERT)")
+    original_value: str
+    normalized: str = ""
 
     # 기존 mock 코드 및 하위 호환성을 위한 속성 입니다
     @property
