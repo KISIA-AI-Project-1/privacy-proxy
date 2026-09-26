@@ -2,8 +2,8 @@
 
 from collections.abc import Iterable
 
-from privacy_proxy.models import DetectedPII
 from privacy_proxy.risk.quasi_identifiers import QIFeature, to_qi_feature
+from privacy_proxy.schemas import DetectedPII
 
 
 def select_representative_qis(entities: Iterable[DetectedPII]) -> list[QIFeature]:
@@ -28,7 +28,7 @@ def select_representative_qis(entities: Iterable[DetectedPII]) -> list[QIFeature
 
 
 def combination_score(features: Iterable[QIFeature]) -> tuple[float, list[str]]:
-    """Return bonuses for QI count, rarity, and high-risk interactions."""
+    """Return bonuses for QI count and high-risk interactions."""
     selected = list(features)
     combination_count = len(selected)
     bonus = 0.0
@@ -40,19 +40,5 @@ def combination_score(features: Iterable[QIFeature]) -> tuple[float, list[str]]:
     elif combination_count >= 3:
         bonus += 12.0 + 4.0 * (combination_count - 3)
         reasons.append(f"서로 다른 준식별자 {combination_count}개가 결합됨")
-
-    has_exact_age = any(feature.exact_age for feature in selected)
-    has_detailed_location = any(feature.detailed_location for feature in selected)
-    has_rare_product = any(feature.rare for feature in selected)
-    has_time = any(feature.category == "TIME" for feature in selected)
-
-    if has_exact_age and has_detailed_location:
-        bonus += 17.0
-        reasons.append("정확한 연령과 세부 지역의 결합으로 재식별 가능성이 증가함")
-    if has_time and has_detailed_location:
-        bonus += 8.0
-        reasons.append("정확한 시각과 세부 지역이 결합됨")
-    if has_rare_product and has_detailed_location:
-        reasons.append("희귀 상품과 세부 지역이 결합됨")
 
     return bonus, reasons

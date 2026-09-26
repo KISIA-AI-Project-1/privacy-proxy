@@ -1,0 +1,146 @@
+"""Canonical data contracts shared by the L1-L9 pipeline."""
+
+import uuid
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+class EntityType(StrEnum):
+    """Entity names shared by L3, L4, and downstream pipeline layers."""
+
+    PHONE = "PHONE"
+    EMAIL = "EMAIL"
+    RRN = "RRN"
+    BUSINESS_REGISTRATION_NUMBER = "BUSINESS_REGISTRATION_NUMBER"
+    PERSON_KO = "PERSON_KO"
+    LOCATION_INFORMAL = "LOCATION_INFORMAL"
+    CUSTOMS_CLEARANCE_ID = "CUSTOMS_CLEARANCE_ID"
+    ORDER_ID = "ORDER_ID"
+    TRACKING_NUMBER = "TRACKING_NUMBER"
+    CUSTOMER_ID = "CUSTOMER_ID"
+    ACCOUNT_NUMBER = "ACCOUNT_NUMBER"
+    ADDRESS_ROAD = "ADDRESS_ROAD"
+    ADDRESS_LOT = "ADDRESS_LOT"
+    ADDRESS_DETAIL = "ADDRESS_DETAIL"
+    SENSITIVE_HEALTH = "SENSITIVE_HEALTH"
+    SENSITIVE_RELIGION = "SENSITIVE_RELIGION"
+    SENSITIVE_FAMILY = "SENSITIVE_FAMILY"
+    SENSITIVE_FINANCIAL = "SENSITIVE_FINANCIAL"
+    ETC = "ETC"
+
+
+class DetectionTier(StrEnum):
+    """Evidence strength for one detection instance."""
+
+    DETERMINISTIC = "deterministic"
+    RULE_ANCHORED = "rule_anchored"
+    MODEL = "model"
+    CANDIDATE = "candidate"
+
+
+class UserContext(BaseModel):
+    """Authenticated user information produced by L1."""
+
+    user_id: str
+    department: str
+    role: str
+    allowed_models: list[str] = Field(default_factory=lambda: ["gpt-5", "gpt-4o-mini"])
+    restore_level: str = "default"
+
+
+class TextSegment(BaseModel):
+    """One text-bearing request segment produced by L2."""
+
+    segment_id: str
+    path: str
+    role: str | None = "user"
+    text: str
+
+
+class ParsedRequest(BaseModel):
+    """Vendor-neutral request representation."""
+
+    vendor: str = "openai"
+    model: str
+    segments: list[TextSegment]
+    original_body: dict[str, Any]
+
+
+class DetectedPII(BaseModel):
+    """Canonical nine-field L3/L4 detection contract.
+
+    ``start_idx`` and ``end_idx`` are zero-based, half-open offsets into the
+    shared ``ProxyContext.raw_prompt``.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    entity_type: EntityType | str
+    original_value: str = Field(min_length=1)
+    start_idx: int = Field(ge=0)
+    end_idx: int = Field(gt=0)
+    confidence: float | None = Field(..., ge=0.0, le=1.0)
+    segment_id: str = "seg-1"
+    normalized: str = ""
+    tier: DetectionTier
+    source: str = Field(default="unknown", description="탐지 출처 (예: L3_Regex, L4_BERT)")
+
+    @property
+    def layer(self) -> str:
+        """Backward-compatible read-only alias for old L5 callers."""
+        return self.source
+
+    @model_validator(mode="after")
+    def validate_span(self) -> "DetectedPII":
+        if self.end_idx <= self.start_idx:
+            raise ValueError("end_idx must be greater than start_idx")
+        return self
+
+
+class ProxyContext(BaseModel):
+    """Shared mutable context passed through the L1-L9 pipeline."""
+
+    model_config = ConfigDict(validate_assignment=True)
+
+    session_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: str = Field(
+        default_factory=lambda: datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        frozen=True,
+    )
+
+    user: UserContext | None = None
+    user_role: str = "intern"
+    parsed_request: ParsedRequest | None = None
+    raw_prompt: str = Field(default="", exclude=True)
+    status: str = "success"
+    error: str | None = None
+
+    detected_entities: list[DetectedPII] = Field(default_factory=list)
+    risk_score: float = Field(default=0.0, ge=0.0, le=100.0)
+    risk_level: str | None = None
+    risk_reasons: list[str] = Field(default_factory=list)
+    policy_action: str | None = None
+
+    anonymized_prompt: str | None = None
+    vault_mapping: dict[str, str] = Field(default_factory=dict)
+    token_types: dict[str, str] = Field(default_factory=dict)
+
+    reconstructed_body: dict[str, Any] = Field(default_factory=dict)
+    llm_raw_response: Any = Field(default=None, exclude=True)
+    final_response: Any = Field(default=None, exclude=True)
+    final_response_log: str | None = Field(default=None, exclude=True)
+    latency_ms: dict[str, float] = Field(default_factory=dict)
+
+    def validate_detected_spans(self) -> None:
+        """Validate every detection against the canonical raw-prompt offsets."""
+        for entity in self.detected_entities:
+            actual = self.raw_prompt[entity.start_idx : entity.end_idx]
+            if actual != entity.original_value:
+                raise ValueError(
+                    "detected entity span mismatch: "
+                    f"entity_type={entity.entity_type!r}, "
+                    f"start_idx={entity.start_idx}, end_idx={entity.end_idx}"
+                )

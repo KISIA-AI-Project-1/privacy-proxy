@@ -2,13 +2,12 @@ from collections.abc import Iterable
 
 import pytest
 
-from privacy_proxy.models import DetectedPII, ProxyContext
 from privacy_proxy.risk.quasi_identifiers import (
     PrivacyClass,
     privacy_class,
-    to_qi_feature,
 )
 from privacy_proxy.risk.score import assess_risk
+from privacy_proxy.schemas import DetectedPII, DetectionTier, ProxyContext
 
 
 def context_for(text: str, entities: Iterable[tuple[str, str]]) -> ProxyContext:
@@ -23,7 +22,9 @@ def context_for(text: str, entities: Iterable[tuple[str, str]]) -> ProxyContext:
                 original_value=value,
                 start_idx=start,
                 end_idx=end,
-                layer="L3",
+                confidence=1.0,
+                tier=DetectionTier.DETERMINISTIC,
+                source="L3_TEST",
             )
         )
         cursor = end
@@ -33,36 +34,6 @@ def context_for(text: str, entities: Iterable[tuple[str, str]]) -> ProxyContext:
 @pytest.mark.parametrize(
     ("text", "entities", "expected_score", "expected_level"),
     [
-        (
-            "30대이고 서울특별시에 거주합니다.",
-            [("AGE_GROUP", "30대"), ("LOCATION_INFORMAL", "서울특별시")],
-            21.0,
-            "LOW",
-        ),
-        (
-            "30대이고 영통구에 거주합니다.",
-            [("AGE_GROUP", "30대"), ("LOCATION_INFORMAL", "영통구")],
-            31.0,
-            "MEDIUM",
-        ),
-        (
-            "37세이고 서울특별시에 거주합니다.",
-            [("AGE", "37세"), ("LOCATION_INFORMAL", "서울특별시")],
-            33.0,
-            "MEDIUM",
-        ),
-        (
-            "37세이고 영통구에 거주합니다.",
-            [("AGE", "37세"), ("LOCATION_INFORMAL", "영통구")],
-            60.0,
-            "HIGH",
-        ),
-        (
-            "37세이고 매탄동에 거주합니다.",
-            [("AGE", "37세"), ("LOCATION_INFORMAL", "매탄동")],
-            67.0,
-            "HIGH",
-        ),
         (
             "서울특별시에 거주합니다.",
             [("LOCATION_INFORMAL", "서울특별시")],
@@ -94,112 +65,37 @@ def test_boundary_examples(
     assert result.risk_level == expected_level
 
 
-def test_age_location_and_rare_product_score() -> None:
-    text = "영통구에 거주하는 37세 고객이 한정판 상품을 구매했습니다."
-    result = assess_risk(
-        context_for(
-            text,
-            [
-                ("LOCATION_INFORMAL", "영통구"),
-                ("AGE", "37세"),
-                ("PRODUCT_NAME", "한정판 상품"),
-            ],
-        )
-    )
-    assert result.risk_score == 82.0
-    assert result.risk_level == "HIGH"
-    assert result.policy_action == "GENERALIZE"
-    assert "희귀 상품과 세부 지역이 결합됨" in result.risk_reasons
+def test_noncanonical_entity_contract_fails_closed() -> None:
+    with pytest.raises(ValueError, match="unsupported detected entity_type"):
+        assess_risk(context_for("테스트", [("UNKNOWN_ENTITY", "테스트")]))
 
 
-def test_time_and_detailed_location_combination() -> None:
-    text = "영통구에서 2026-09-07 14:30에 구매했습니다."
-    result = assess_risk(
-        context_for(
-            text,
-            [
-                ("LOCATION_INFORMAL", "영통구"),
-                ("PURCHASE_TIME", "2026-09-07 14:30"),
-            ],
-        )
-    )
-    assert result.risk_score == 43.0
-    assert "정확한 시각과 세부 지역이 결합됨" in result.risk_reasons
+def test_etc_fails_closed_in_operational_score() -> None:
+    with pytest.raises(ValueError, match="ETC"):
+        assess_risk(context_for("기타", [("ETC", "기타")]))
 
 
-def test_rare_product_and_detailed_location_combination() -> None:
-    text = "영통구에서 한정판 운동화를 구매했습니다."
-    result = assess_risk(
-        context_for(
-            text,
-            [
-                ("LOCATION_INFORMAL", "영통구"),
-                ("PURCHASED_PRODUCT", "한정판 운동화"),
-            ],
-        )
-    )
-    assert result.risk_score == 41.0
-    assert "희귀 상품과 세부 지역이 결합됨" in result.risk_reasons
+@pytest.mark.parametrize("entity_type", ["order_id", " ORDER_ID", "ORDER_ID "])
+def test_noncanonical_spelling_fails_closed(entity_type: str) -> None:
+    with pytest.raises(ValueError, match="unsupported detected entity_type"):
+        assess_risk(context_for("테스트", [(entity_type, "테스트")]))
 
 
-@pytest.mark.parametrize(
-    "entity_type",
-    [
-        "AGE",
-        "AGE_GROUP",
-        "GENDER",
-        "PRODUCT",
-        "PRODUCT_NAME",
-        "PURCHASED_PRODUCT",
-        "DATE_TIME",
-        "DATETIME",
-        "PURCHASE_TIME",
-        "ORDER_TIME",
-        "PRICE",
-        "AMOUNT",
-        "REFUND_REASON",
-        "PURCHASE_COUNT",
-    ],
-)
-def test_l4_pending_entity_is_classified_as_qi(entity_type: str) -> None:
-    entity = DetectedPII(
-        entity_type=entity_type,
-        original_value="테스트",
+def test_noncanonical_overlap_cannot_be_removed_before_validation() -> None:
+    text = "ORD-2026-001"
+    canonical = DetectedPII(
+        entity_type="ORDER_ID",
+        original_value=text,
         start_idx=0,
-        end_idx=3,
-        layer="L4",
+        end_idx=len(text),
+        confidence=1.0,
+        tier=DetectionTier.RULE_ANCHORED,
+        source="L4_ORDER_TEST",
     )
-    assert privacy_class(entity) is PrivacyClass.QI
-    assert to_qi_feature(entity) is not None
+    noncanonical = canonical.model_copy(update={"entity_type": "UNKNOWN_ENTITY"})
 
-
-@pytest.mark.parametrize(
-    ("entity_type", "value", "expected_score"),
-    [
-        ("GENDER", "여성", 5.0),
-        ("PRICE", "39,000원", 8.0),
-        ("AMOUNT", "39,000원", 8.0),
-        ("REFUND_REASON", "상품 파손", 10.0),
-        ("PURCHASE_COUNT", "3회", 6.0),
-    ],
-)
-def test_l4_pending_scalar_qi_scores(entity_type: str, value: str, expected_score: float) -> None:
-    result = assess_risk(context_for(value, [(entity_type, value)]))
-    assert result.risk_score == expected_score
-
-
-def test_common_product_is_not_marked_rare() -> None:
-    entity = DetectedPII(
-        entity_type="PRODUCT",
-        original_value="운동화",
-        start_idx=0,
-        end_idx=3,
-        layer="L4",
-    )
-    feature = to_qi_feature(entity)
-    assert feature is not None
-    assert feature.base_score == 5.0
-    assert feature.rare is False
+    with pytest.raises(ValueError, match="unsupported detected entity_type"):
+        assess_risk(ProxyContext(raw_prompt=text, detected_entities=[canonical, noncanonical]))
 
 
 def test_distinct_locations_without_verified_hierarchy_are_preserved() -> None:
@@ -224,24 +120,15 @@ def test_identical_location_is_counted_once() -> None:
         original_value="영통구",
         start_idx=0,
         end_idx=3,
-        layer="L4",
+        confidence=1.0,
+        tier=DetectionTier.MODEL,
+        source="L4_TEST",
     )
     result = assess_risk(
         ProxyContext(raw_prompt=text, detected_entities=[duplicate, duplicate.model_copy()])
     )
     assert result.risk_score == 15.0
     assert "서로 다른 준식별자 2개가 결합됨" not in result.risk_reasons
-
-
-def test_different_location_roles_are_preserved() -> None:
-    text = "서울특별시에 살고 영통구에서 근무합니다."
-    result = assess_risk(
-        context_for(
-            text,
-            [("RESIDENCE_LOCATION", "서울특별시"), ("WORKPLACE_LOCATION", "영통구")],
-        )
-    )
-    assert result.risk_score == 28.0
 
 
 def test_service_identifier_has_priority() -> None:
@@ -255,8 +142,8 @@ def test_service_identifier_has_priority() -> None:
 @pytest.mark.parametrize(
     ("entity_type", "expected_class"),
     [
-        ("PERSON", PrivacyClass.DIRECT),
-        ("ADDRESS_TAIL", PrivacyClass.DIRECT),
+        ("PERSON_KO", PrivacyClass.DIRECT),
+        ("ADDRESS_ROAD", PrivacyClass.DIRECT),
         ("LOCATION_INFORMAL", PrivacyClass.QI),
         ("ORDER_ID", PrivacyClass.SERVICE),
         ("TRACKING_NUMBER", PrivacyClass.SERVICE),
@@ -274,7 +161,9 @@ def test_confirmed_l4_entity_contract(entity_type: str, expected_class: PrivacyC
         original_value="테스트",
         start_idx=0,
         end_idx=3,
-        layer="L4",
+        confidence=1.0,
+        tier=DetectionTier.RULE_ANCHORED,
+        source="L4_TEST",
     )
     assert privacy_class(entity) is expected_class
 
@@ -299,8 +188,9 @@ def test_sensitive_candidate_uses_confidence(
         original_value="아토피",
         start_idx=0,
         end_idx=3,
-        layer="L4",
         confidence=confidence,
+        tier=DetectionTier.CANDIDATE,
+        source="L4_SENSITIVE_TEST",
     )
     result = assess_risk(ProxyContext(raw_prompt="아토피가 있어요.", detected_entities=[entity]))
     assert result.risk_score == expected_score
@@ -310,8 +200,17 @@ def test_sensitive_candidate_uses_confidence(
 
 
 def test_raw_prompt_is_excluded_from_serialization() -> None:
-    context = ProxyContext(raw_prompt="비공개 원문")
-    assert "raw_prompt" not in context.model_dump()
+    context = ProxyContext(
+        raw_prompt="비공개 원문",
+        llm_raw_response={"private": "raw"},
+        final_response={"private": "final"},
+        final_response_log="private-log",
+    )
+    payload = context.model_dump()
+    assert "raw_prompt" not in payload
+    assert "llm_raw_response" not in payload
+    assert "final_response" not in payload
+    assert "final_response_log" not in payload
 
 
 def test_invalid_span_is_rejected_before_scoring() -> None:
@@ -319,11 +218,13 @@ def test_invalid_span_is_rejected_before_scoring() -> None:
         raw_prompt="홍길동",
         detected_entities=[
             DetectedPII(
-                entity_type="PERSON",
+                entity_type="PERSON_KO",
                 original_value="김철수",
                 start_idx=0,
                 end_idx=3,
-                layer="L3",
+                confidence=1.0,
+                tier=DetectionTier.MODEL,
+                source="L3_TEST",
             )
         ],
     )
@@ -334,12 +235,10 @@ def test_invalid_span_is_rejected_before_scoring() -> None:
 @pytest.mark.parametrize(
     "entity_type",
     [
-        "PERSON_EN",
         "PERSON_KO",
-        "DATE_OF_BIRTH",
-        "KR_PASSPORT",
-        "KR_FRN",
-        "KR_DRIVER_LICENSE",
+        "PHONE",
+        "EMAIL",
+        "RRN",
         "ACCOUNT_NUMBER",
         "ADDRESS_ROAD",
         "ADDRESS_LOT",
@@ -354,8 +253,13 @@ def test_new_direct_identifier_contract_is_tokenized(entity_type: str) -> None:
     assert result.policy_action == "TOKENIZE"
 
 
-def test_kr_brn_is_protected_as_service_identifier() -> None:
-    result = assess_risk(context_for("123-45-67890", [("KR_BRN", "123-45-67890")]))
+def test_business_registration_number_is_protected_as_service_identifier() -> None:
+    result = assess_risk(
+        context_for(
+            "123-45-67890",
+            [("BUSINESS_REGISTRATION_NUMBER", "123-45-67890")],
+        )
+    )
 
     assert result.risk_score == 85.0
     assert result.risk_level == "HIGH"

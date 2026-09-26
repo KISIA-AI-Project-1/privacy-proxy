@@ -2,9 +2,11 @@
 
 from time import perf_counter
 
-from privacy_proxy.models import ProxyContext
 from privacy_proxy.risk.combination import combination_score, select_representative_qis
+from privacy_proxy.risk.entity_contract import L5_SUPPORTED_ENTITY_TYPES
 from privacy_proxy.risk.quasi_identifiers import PrivacyClass, privacy_class
+from privacy_proxy.risk.resolver import resolve_overlaps
+from privacy_proxy.schemas import ProxyContext
 
 LOW_MAX = 30.0
 MEDIUM_MAX = 60.0
@@ -30,18 +32,19 @@ def assess_risk(context: ProxyContext) -> ProxyContext:
     """Evaluate L5 risk in place without masking or changing the raw prompt."""
     started = perf_counter()
     context.validate_detected_spans()
-
-    classes = [(entity, privacy_class(entity)) for entity in context.detected_entities]
     unsupported_types = sorted(
         {
-            entity.entity_type.strip().upper()
-            for entity, kind in classes
-            if kind is PrivacyClass.GENERAL
+            str(entity.entity_type)
+            for entity in context.detected_entities
+            if str(entity.entity_type) not in L5_SUPPORTED_ENTITY_TYPES
         }
     )
     if unsupported_types:
         joined = ", ".join(unsupported_types)
         raise ValueError(f"unsupported detected entity_type(s): {joined}")
+
+    context.detected_entities = resolve_overlaps(context.detected_entities)
+    classes = [(entity, privacy_class(entity)) for entity in context.detected_entities]
 
     features = select_representative_qis(context.detected_entities)
     reasons = [feature.reason for feature in features]
@@ -63,14 +66,17 @@ def assess_risk(context: ProxyContext) -> ProxyContext:
         kinds = ", ".join(sorted({entity.entity_type.upper() for entity in service}))
         _append_once(reasons, f"서비스 식별자({kinds})가 포함되어 우선 보호가 필요함")
     if sensitive:
-        max_confidence = max(entity.confidence for entity in sensitive)
-        sensitive_score = SENSITIVE_INFORMATION_MAX_SCORE * max_confidence
+        confidences = [entity.confidence for entity in sensitive]
+        if any(value is None for value in confidences):
+            sensitive_score = SENSITIVE_INFORMATION_MAX_SCORE
+            detail = "confidence 미산정: 정책상 보수적 대체 점수 80 적용"
+        else:
+            max_confidence = max(value for value in confidences if value is not None)
+            sensitive_score = SENSITIVE_INFORMATION_MAX_SCORE * max_confidence
+            detail = f"confidence={max_confidence:.2f}"
         score = max(score, sensitive_score)
         kinds = ", ".join(sorted({entity.entity_type.upper() for entity in sensitive}))
-        _append_once(
-            reasons,
-            f"민감정보 후보({kinds}, confidence={max_confidence:.2f})가 포함됨",
-        )
+        _append_once(reasons, f"민감정보 후보({kinds}, {detail})가 포함됨")
 
     final_score = min(100.0, round(score, 2))
     level = _level(final_score)
