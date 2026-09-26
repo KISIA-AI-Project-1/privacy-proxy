@@ -49,6 +49,18 @@ def test_required_fields_cannot_be_omitted(field: str) -> None:
         DetectedPII.model_validate(payload)
 
 
+def test_validation_error_hides_private_input() -> None:
+    private_value = "private-person@example.com"
+    payload = entity().model_dump()
+    payload["original_value"] = private_value
+    payload["confidence"] = 2.0
+
+    with pytest.raises(ValidationError) as exc_info:
+        DetectedPII.model_validate(payload)
+
+    assert private_value not in str(exc_info.value)
+
+
 def test_null_roundtrip() -> None:
     payload = entity().model_dump(mode="json")
     assert payload["confidence"] is None

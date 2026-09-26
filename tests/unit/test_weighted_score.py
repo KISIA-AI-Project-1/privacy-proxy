@@ -42,5 +42,7 @@ def test_multiple_locations_remain_one_qi_category() -> None:
 
 
 def test_unknown_entity_fails_closed() -> None:
-    with pytest.raises(ValueError, match="UNKNOWN_ENTITY"):
+    with pytest.raises(ValueError, match="unsupported detected entity type") as exc_info:
         calculate_weighted_risk([detection("UNKNOWN_ENTITY", "미등록값")])
+    assert "UNKNOWN_ENTITY" not in str(exc_info.value)
+    assert "미등록값" not in str(exc_info.value)

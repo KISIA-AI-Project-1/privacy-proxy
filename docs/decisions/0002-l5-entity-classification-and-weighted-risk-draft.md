@@ -1,6 +1,6 @@
 # L5 엔터티 분류와 가중 위험 점수 초안
 
-> 상태: PROPOSED  
+> 상태: PROPOSED
 > 기준 스키마: `src/privacy_proxy/schemas.py`의 `EntityType`
 
 ## 1. 대상

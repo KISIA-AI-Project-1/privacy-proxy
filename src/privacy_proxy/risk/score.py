@@ -40,8 +40,7 @@ def assess_risk(context: ProxyContext) -> ProxyContext:
         }
     )
     if unsupported_types:
-        joined = ", ".join(unsupported_types)
-        raise ValueError(f"unsupported detected entity_type(s): {joined}")
+        raise ValueError("unsupported detected entity type")
 
     context.detected_entities = resolve_overlaps(context.detected_entities)
     classes = [(entity, privacy_class(entity)) for entity in context.detected_entities]

@@ -66,18 +66,18 @@ def test_boundary_examples(
 
 
 def test_noncanonical_entity_contract_fails_closed() -> None:
-    with pytest.raises(ValueError, match="unsupported detected entity_type"):
+    with pytest.raises(ValueError, match="unsupported detected entity type"):
         assess_risk(context_for("테스트", [("UNKNOWN_ENTITY", "테스트")]))
 
 
 def test_etc_fails_closed_in_operational_score() -> None:
-    with pytest.raises(ValueError, match="ETC"):
+    with pytest.raises(ValueError, match="unsupported detected entity type"):
         assess_risk(context_for("기타", [("ETC", "기타")]))
 
 
 @pytest.mark.parametrize("entity_type", ["order_id", " ORDER_ID", "ORDER_ID "])
 def test_noncanonical_spelling_fails_closed(entity_type: str) -> None:
-    with pytest.raises(ValueError, match="unsupported detected entity_type"):
+    with pytest.raises(ValueError, match="unsupported detected entity type"):
         assess_risk(context_for("테스트", [(entity_type, "테스트")]))
 
 
@@ -94,7 +94,7 @@ def test_noncanonical_overlap_cannot_be_removed_before_validation() -> None:
     )
     noncanonical = canonical.model_copy(update={"entity_type": "UNKNOWN_ENTITY"})
 
-    with pytest.raises(ValueError, match="unsupported detected entity_type"):
+    with pytest.raises(ValueError, match="unsupported detected entity type"):
         assess_risk(ProxyContext(raw_prompt=text, detected_entities=[canonical, noncanonical]))
 
 
@@ -269,5 +269,7 @@ def test_business_registration_number_is_protected_as_service_identifier() -> No
 def test_unknown_detected_entity_fails_closed() -> None:
     context = context_for("비밀값", [("UNREGISTERED_PRIVATE_VALUE", "비밀값")])
 
-    with pytest.raises(ValueError, match="unsupported detected entity_type"):
+    with pytest.raises(ValueError, match="unsupported detected entity type") as exc_info:
         assess_risk(context)
+    assert "UNREGISTERED_PRIVATE_VALUE" not in str(exc_info.value)
+    assert "비밀값" not in str(exc_info.value)

@@ -73,10 +73,15 @@ class DetectedPII(BaseModel):
     """Canonical nine-field L3/L4 detection contract.
 
     ``start_idx`` and ``end_idx`` are zero-based, half-open offsets into the
-    shared ``ProxyContext.raw_prompt``.
+    shared ``ProxyContext.raw_prompt``. Producers must state the evidence tier;
+    a missing confidence is represented by explicit ``None``.
     """
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        hide_input_in_errors=True,
+    )
 
     entity_type: EntityType | str
     original_value: str = Field(min_length=1)
@@ -96,14 +101,14 @@ class DetectedPII(BaseModel):
     @model_validator(mode="after")
     def validate_span(self) -> "DetectedPII":
         if self.end_idx <= self.start_idx:
-            raise ValueError("end_idx must be greater than start_idx")
+            raise ValueError("invalid detected entity span")
         return self
 
 
 class ProxyContext(BaseModel):
     """Shared mutable context passed through the L1-L9 pipeline."""
 
-    model_config = ConfigDict(validate_assignment=True)
+    model_config = ConfigDict(validate_assignment=True, hide_input_in_errors=True)
 
     session_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     created_at: str = Field(
@@ -139,8 +144,4 @@ class ProxyContext(BaseModel):
         for entity in self.detected_entities:
             actual = self.raw_prompt[entity.start_idx : entity.end_idx]
             if actual != entity.original_value:
-                raise ValueError(
-                    "detected entity span mismatch: "
-                    f"entity_type={entity.entity_type!r}, "
-                    f"start_idx={entity.start_idx}, end_idx={entity.end_idx}"
-                )
+                raise ValueError("detected entity span mismatch")

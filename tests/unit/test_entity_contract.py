@@ -80,7 +80,7 @@ def test_etc_is_schema_valid_but_l5_fails_closed() -> None:
     )
 
     assert privacy_class(detection) is PrivacyClass.GENERAL
-    with pytest.raises(ValueError, match="ETC"):
+    with pytest.raises(ValueError, match="unsupported detected entity type"):
         calculate_weighted_risk([detection])
 
 
