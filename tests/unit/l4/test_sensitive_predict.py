@@ -113,9 +113,13 @@ def test_find_sensitive는_threshold_미만은_제외한다(monkeypatch: pytest.
 def test_find_sensitive는_REFINED_CATEGORIES_아니면_2단계_거치지_않고_그대로_emit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """FINANCIAL은 REFINED_CATEGORIES 밖 — classify_windows에 빈 윈도우만 전달되고
-    (실제 모델 입력 없음), 1단계 결과(confidence 0.4, tier CANDIDATE)가 그대로 나온다.
+    """2026-09-27 기준 4종 전부 REFINED_CATEGORIES라 실제 카테고리로는 비REFINED
+    케이스를 만들 수 없다 — 필터 로직 자체(특정 카테고리를 다시 뺄 수 있는 구조)는
+    REFINED_CATEGORIES를 monkeypatch해서 검증한다. FINANCIAL을 임시로 밖으로
+    빼면 classify_windows에 빈 윈도우만 전달되고(실제 모델 입력 없음), 1단계
+    결과(confidence 0.4, tier CANDIDATE)가 그대로 나와야 한다.
     """
+    monkeypatch.setattr(predict, "REFINED_CATEGORIES", frozenset({"SENSITIVE_HEALTH"}))
     text = "요즘 형편이 안 좋아서 결제가 늦었어요"
     calls: list[list[str]] = []
 
@@ -139,9 +143,11 @@ def test_find_sensitive는_REFINED_CATEGORIES_아니면_2단계_거치지_않고
 def test_find_sensitive는_REFINED와_비REFINED_혼재시_REFINED만_배치_추론에_태운다(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """HEALTH(REFINED)+FINANCIAL(비REFINED) 동시 등장 — classify_windows에는
-    HEALTH 윈도우만 들어가고, FINANCIAL은 1단계 그대로 결과에 합류한다.
+    """REFINED_CATEGORIES를 monkeypatch해 HEALTH(REFINED)+FINANCIAL(비REFINED)
+    혼재를 재현한다 — classify_windows에는 HEALTH 윈도우만 들어가고, FINANCIAL은
+    1단계 그대로 결과에 합류해야 한다.
     """
+    monkeypatch.setattr(predict, "REFINED_CATEGORIES", frozenset({"SENSITIVE_HEALTH"}))
     text = "아토피 때문에 힘든데 형편이 어려워서 싼 걸로 주문했어요"
     calls: list[list[str]] = []
 
@@ -166,10 +172,12 @@ def test_find_sensitive는_REFINED와_비REFINED_혼재시_REFINED만_배치_추
 def test_find_sensitive는_REFINED_다중후보와_비REFINED_혼재시_카테고리별로_정확히_매칭한다(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """FAMILY(REFINED) 후보 2개 + FINANCIAL(비REFINED) 후보 1개 동시 등장.
-    배치 분리 후 재결합 과정에서 원문값(original_value) 기준으로 정확한
-    카테고리·confidence에 매칭되는지 확인 — 인덱스가 뒤섞이면 걸린다.
+    """REFINED_CATEGORIES를 monkeypatch해 FAMILY(REFINED) 후보 2개 + FINANCIAL
+    (비REFINED) 후보 1개 동시 등장을 재현한다. 배치 분리 후 재결합 과정에서
+    원문값(original_value) 기준으로 정확한 카테고리·confidence에 매칭되는지
+    확인 — 인덱스가 뒤섞이면 걸린다.
     """
+    monkeypatch.setattr(predict, "REFINED_CATEGORIES", frozenset({"SENSITIVE_FAMILY"}))
     text = "아내가 좋아하고 부모님이 쓰실 물건인데 파산 신청 때문에 결제가 늦어요"
 
     def _fake_classify(

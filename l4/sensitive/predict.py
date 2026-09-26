@@ -40,11 +40,20 @@ WINDOW_CHARS = 60
 # TODO(W7): 합성 평가셋(adversarial.jsonl) 실측 후 조정. CLAUDE.md "2단계 설계" 참고.
 THRESHOLD = 0.7
 
-# adversarial.jsonl 실측(2026-09-23, CLAUDE.md "adversarial.jsonl 작성 + 실측 완료"
-# 참고) 결과 2단계 모델이 BoW 베이스라인 대비 유의미한 이점을 보인 카테고리만
-# 재판정을 적용한다. RELIGION(BoW와 동률)·FINANCIAL(BoW보다 낮음 — 금액 어휘
-# 지름길 의심)은 표면형 다양화 등 데이터 재작업 전까지 1단계 결과를 그대로 emit.
-REFINED_CATEGORIES = frozenset({"SENSITIVE_FAMILY", "SENSITIVE_HEALTH"})
+# 2026-09-23엔 adversarial.jsonl 실측 결과 RELIGION(BoW와 동률)·FINANCIAL(BoW보다
+# 낮음 — 금액 어휘 지름길 의심)을 1단계 그대로 emit으로 뺐었다. 이후 negA 재설계
+# (1인칭/3인칭 대조쌍, valence 대조쌍) + 재학습으로 두 카테고리 모두 negation
+# 축이 해결되고 adversarial 성능도 개선됨(CLAUDE.md "재검증 4종"·"기초생활수급
+# 회귀 수정" 참고) — 2026-09-27 4종 전체 편입. 특정 카테고리가 다시 이 세트 밖으로
+# 내려갈 수 있으니(예: 새 회귀 발견 시) frozenset 필터 구조는 그대로 유지.
+REFINED_CATEGORIES = frozenset(
+    {
+        "SENSITIVE_FAMILY",
+        "SENSITIVE_HEALTH",
+        "SENSITIVE_RELIGION",
+        "SENSITIVE_FINANCIAL",
+    }
+)
 
 
 def load_model(model_dir: str | Path) -> tuple[Any, Any]:
