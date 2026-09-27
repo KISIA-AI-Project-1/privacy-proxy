@@ -10,12 +10,12 @@ def test_audit_log_excludes_pii_mapping_and_restored_output(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     private_value = "private-person@example.com"
-    placeholder = "<EMAIL_1>"
+    placeholder = "<EMAIL_ADDRESS_1>"
     context = ProxyContext(
         raw_prompt=private_value,
         detected_entities=[
             DetectedPII(
-                entity_type="EMAIL",
+                entity_type="EMAIL_ADDRESS",
                 original_value=private_value,
                 start_idx=0,
                 end_idx=len(private_value),
@@ -26,7 +26,7 @@ def test_audit_log_excludes_pii_mapping_and_restored_output(
         ],
         anonymized_prompt=placeholder,
         vault_mapping={placeholder: private_value},
-        token_types={placeholder: "EMAIL"},
+        token_types={placeholder: "EMAIL_ADDRESS"},
         reconstructed_body={"messages": [{"content": placeholder}]},
         final_response_log=f"restored {private_value}",
     )

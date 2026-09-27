@@ -10,7 +10,7 @@ async def mock_l3_detection(context: ProxyContext) -> ProxyContext:
         for match in re.finditer(phone_pattern, context.raw_prompt):
             context.detected_entities.append(
                 DetectedPII(
-                    entity_type="PHONE",
+                    entity_type="PHONE_NUMBER",
                     original_value=match.group(),
                     start_idx=match.start(),
                     end_idx=match.end(),
