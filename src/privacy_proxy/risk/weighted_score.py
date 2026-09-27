@@ -156,7 +156,7 @@ def calculate_weighted_risk(entities: list[DetectedPII]) -> WeightedRiskResult:
         }
     )
     if unsupported:
-        raise ValueError(f"unsupported detected entity_type(s): {', '.join(unsupported)}")
+        raise ValueError("unsupported detected entity type")
 
     classified = [(entity, privacy_class(entity)) for entity in entities]
     identification = _identification_component(entities)

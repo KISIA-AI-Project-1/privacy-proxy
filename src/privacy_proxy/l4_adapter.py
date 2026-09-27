@@ -21,7 +21,7 @@ def adapt_klue_span(
 ) -> DetectedPII:
     """Map a KLUE label and translate its segment-local span to raw_prompt."""
     if label not in KLUE_TO_CANONICAL_ENTITY:
-        raise ValueError(f"unsupported KLUE entity label: {label}")
+        raise ValueError("unsupported KLUE entity label")
     if offset_base < 0:
         raise ValueError("offset_base must be non-negative")
     if start_idx < 0 or end_idx <= start_idx or end_idx > len(segment_text):

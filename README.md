@@ -206,7 +206,7 @@ privacy-proxy/
 │   │   │   └── recognizers/     #    이름·전화번호·이메일·주소
 │   │   └── ecommerce/           # L4 이커머스 특화 탐지 (이선학)
 │   │       ├── klue_ner.py      #    KLUE-BERT NER 연동
-│   │       ├── alignment.py     #    spaCy 어절 정렬, 조사 분리
+│   │       ├── alignment.py     #    NER span 경계 ↔ 조사 분리 (offset_mapping 기반)
 │   │       └── recognizers/     #    주문번호·고객번호·배송정보·환불사유
 │   ├── risk/                    # L5 문맥·간접식별 위험도 (형지원)
 │   │   ├── quasi_identifiers.py #    준식별자 정의
