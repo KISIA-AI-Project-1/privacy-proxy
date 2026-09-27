@@ -150,5 +150,5 @@ def test_removed_names_are_not_silently_accepted(old_name: str) -> None:
         confidence=None,
         tier=DetectionTier.RULE_ANCHORED,
     )
-    with pytest.raises(ValueError, match="unsupported detected entity_type"):
+    with pytest.raises(ValueError, match="unsupported detected entity type"):
         assess_risk(ProxyContext(raw_prompt="test", detected_entities=[detection]))
