@@ -39,7 +39,7 @@ class _TimeoutMatcher:
             raise L3DependencyTimeoutError() from None
 
 
-class _FailClosedPattern(Pattern):  # type: ignore[misc]
+class _FailClosedPattern(Pattern):
     @property
     def compiled_regex(self) -> Any:
         return self._compiled_regex
