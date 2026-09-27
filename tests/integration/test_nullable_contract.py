@@ -12,7 +12,7 @@ from privacy_proxy.schemas import DetectedPII, DetectionTier, ProxyContext
 
 
 def entity(
-    kind: str = "PHONE",
+    kind: str = "PHONE_NUMBER",
     confidence: float | None = None,
     tier: DetectionTier = DetectionTier.RULE_ANCHORED,
     start: int = 0,
@@ -59,7 +59,7 @@ def test_null_roundtrip() -> None:
 @pytest.mark.parametrize(
     "kind,score,action",
     [
-        ("PHONE", 80, "TOKENIZE"),
+        ("PHONE_NUMBER", 80, "TOKENIZE"),
         ("ORDER_ID", 85, "TOKENIZE"),
         ("LOCATION_INFORMAL", 5, "ALLOW"),
         ("SENSITIVE_HEALTH", 80, "TOKENIZE"),
@@ -86,7 +86,7 @@ async def test_sensitive_zero_is_not_missing() -> None:
 
 @pytest.mark.parametrize("confidence", [None, 0.7])
 def test_tier_beats_model_confidence(confidence: float | None) -> None:
-    high = entity("RRN", confidence, DetectionTier.DETERMINISTIC)
+    high = entity("KR_RRN", confidence, DetectionTier.DETERMINISTIC)
     low = entity("PERSON_KO", 0.99, DetectionTier.MODEL)
     for sequence in permutations([high, low]):
         assert resolve_overlaps(list(sequence)) == [high]
@@ -115,7 +115,7 @@ async def test_unsafe_overlap_fails_without_discarding_input(
 ) -> None:
     # The final case checks a high-tier QI cannot suppress tokenization.
     winner = entity(
-        "LOCATION_INFORMAL" if kind == "SENSITIVE_HEALTH" else "RRN",
+        "LOCATION_INFORMAL" if kind == "SENSITIVE_HEALTH" else "KR_RRN",
         None,
         DetectionTier.DETERMINISTIC,
     )

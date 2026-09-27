@@ -27,10 +27,15 @@ class QIFeature:
 
 DIRECT_IDENTIFIERS = frozenset(
     {
+        EntityType.PERSON_EN.value,
+        EntityType.ADDRESS.value,
+        EntityType.KR_RRN.value,
+        EntityType.PHONE_NUMBER.value,
+        EntityType.EMAIL_ADDRESS.value,
+        EntityType.KR_PASSPORT.value,
+        EntityType.KR_FRN.value,
+        EntityType.KR_DRIVER_LICENSE.value,
         EntityType.PERSON_KO.value,
-        EntityType.PHONE.value,
-        EntityType.EMAIL.value,
-        EntityType.RRN.value,
         EntityType.ACCOUNT_NUMBER.value,
         EntityType.ADDRESS_ROAD.value,
         EntityType.ADDRESS_LOT.value,
@@ -40,11 +45,11 @@ DIRECT_IDENTIFIERS = frozenset(
 
 SERVICE_IDENTIFIERS = frozenset(
     {
+        EntityType.KR_BRN.value,
         EntityType.ORDER_ID.value,
         EntityType.CUSTOMER_ID.value,
         EntityType.TRACKING_NUMBER.value,
         EntityType.CUSTOMS_CLEARANCE_ID.value,
-        EntityType.BUSINESS_REGISTRATION_NUMBER.value,
     }
 )
 
@@ -57,7 +62,15 @@ SENSITIVE_INFORMATION = frozenset(
     }
 )
 
-QUASI_IDENTIFIERS = frozenset({EntityType.LOCATION_INFORMAL.value})
+QUASI_IDENTIFIERS = frozenset(
+    {
+        EntityType.LOCATION_INFORMAL.value,
+        EntityType.LOCATION.value,
+        EntityType.AGE.value,
+        EntityType.AGE_GROUP.value,
+        EntityType.DATE_OF_BIRTH.value,
+    }
+)
 
 
 def canonical_entity_type(entity: DetectedPII) -> str:
@@ -97,6 +110,16 @@ def to_qi_feature(entity: DetectedPII) -> QIFeature | None:
     """Convert a supported QI entity into an internal L5 feature."""
     if canonical_entity_type(entity) not in QUASI_IDENTIFIERS:
         return None
+
+    entity_type = canonical_entity_type(entity)
+    # Age, age group and birth date describe the same demographic dimension.
+    # Keep the most specific signal instead of counting them independently.
+    if entity_type == EntityType.DATE_OF_BIRTH:
+        return QIFeature("AGE", "AGE", 3, 22.0, "생년월일 정보가 포함됨")
+    if entity_type == EntityType.AGE:
+        return QIFeature("AGE", "AGE", 2, 20.0, "정확한 연령이 포함됨")
+    if entity_type == EntityType.AGE_GROUP:
+        return QIFeature("AGE", "AGE", 1, 8.0, "연령대 정보가 포함됨")
 
     value = entity.original_value.strip()
     level = location_level(value)

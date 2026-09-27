@@ -9,15 +9,23 @@ class EntityStatus(StrEnum):
     EMITTED = "emitted"
     ADAPTER_PENDING = "adapter_pending"
     IMPLEMENTATION_PENDING = "implementation_pending"
-    EXCLUDED = "excluded"
 
 
 L3_ENTITY_TYPES = frozenset(
     {
-        EntityType.PHONE.value,
-        EntityType.EMAIL.value,
-        EntityType.RRN.value,
-        EntityType.BUSINESS_REGISTRATION_NUMBER.value,
+        EntityType.PERSON_EN.value,
+        EntityType.LOCATION.value,
+        EntityType.ADDRESS.value,
+        EntityType.AGE.value,
+        EntityType.AGE_GROUP.value,
+        EntityType.DATE_OF_BIRTH.value,
+        EntityType.KR_RRN.value,
+        EntityType.PHONE_NUMBER.value,
+        EntityType.EMAIL_ADDRESS.value,
+        EntityType.KR_PASSPORT.value,
+        EntityType.KR_FRN.value,
+        EntityType.KR_DRIVER_LICENSE.value,
+        EntityType.KR_BRN.value,
     }
 )
 
@@ -60,5 +68,4 @@ ENTITY_STATUS: dict[str, EntityStatus] = {
     **dict.fromkeys(L4_RECOGNIZER_ENTITY_TYPES, EntityStatus.EMITTED),
     **dict.fromkeys(L4_NER_ENTITY_TYPES, EntityStatus.ADAPTER_PENDING),
     **dict.fromkeys(L4_SENSITIVE_ENTITY_TYPES, EntityStatus.IMPLEMENTATION_PENDING),
-    EntityType.ETC.value: EntityStatus.EXCLUDED,
 }

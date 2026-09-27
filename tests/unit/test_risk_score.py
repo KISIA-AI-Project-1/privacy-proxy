@@ -236,9 +236,9 @@ def test_invalid_span_is_rejected_before_scoring() -> None:
     "entity_type",
     [
         "PERSON_KO",
-        "PHONE",
-        "EMAIL",
-        "RRN",
+        "PHONE_NUMBER",
+        "EMAIL_ADDRESS",
+        "KR_RRN",
         "ACCOUNT_NUMBER",
         "ADDRESS_ROAD",
         "ADDRESS_LOT",
@@ -257,7 +257,7 @@ def test_business_registration_number_is_protected_as_service_identifier() -> No
     result = assess_risk(
         context_for(
             "123-45-67890",
-            [("BUSINESS_REGISTRATION_NUMBER", "123-45-67890")],
+            [("KR_BRN", "123-45-67890")],
         )
     )
 

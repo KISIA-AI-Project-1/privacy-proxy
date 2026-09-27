@@ -17,10 +17,10 @@ from privacy_proxy.schemas import DetectedPII, DetectionTier, EntityType
 
 def test_shared_schema_inventory_is_complete_and_disjoint() -> None:
     assert {
-        "PHONE",
-        "EMAIL",
-        "RRN",
-        "BUSINESS_REGISTRATION_NUMBER",
+        "PHONE_NUMBER",
+        "EMAIL_ADDRESS",
+        "KR_RRN",
+        "KR_BRN",
         "PERSON_KO",
         "LOCATION_INFORMAL",
         "CUSTOMS_CLEARANCE_ID",
@@ -35,14 +35,14 @@ def test_shared_schema_inventory_is_complete_and_disjoint() -> None:
         "SENSITIVE_RELIGION",
         "SENSITIVE_FAMILY",
         "SENSITIVE_FINANCIAL",
-        "ETC",
-    } == SCHEMA_ENTITY_TYPES
-    assert len(L3_ENTITY_TYPES) == 4
+    } | L3_ENTITY_TYPES == SCHEMA_ENTITY_TYPES
+    assert len(L3_ENTITY_TYPES) == 13
     assert len(L4_NER_ENTITY_TYPES) == 2
     assert len(L4_RECOGNIZER_ENTITY_TYPES) == 8
     assert len(L4_SENSITIVE_ENTITY_TYPES) == 4
-    assert len(L5_SUPPORTED_ENTITY_TYPES) == 18
-    assert len(SCHEMA_ENTITY_TYPES) == 19
+    assert len(L5_SUPPORTED_ENTITY_TYPES) == 27
+    assert len(SCHEMA_ENTITY_TYPES) == 27
+    assert L5_SUPPORTED_ENTITY_TYPES == SCHEMA_ENTITY_TYPES
     assert set(ENTITY_STATUS) == SCHEMA_ENTITY_TYPES
     groups = [
         L3_ENTITY_TYPES,
@@ -69,9 +69,12 @@ def test_every_supported_entity_has_l5_classification_and_weight(entity_type: st
     assert calculate_weighted_risk([detection]).score >= 0.0
 
 
-def test_etc_is_schema_valid_but_l5_fails_closed() -> None:
+def test_removed_etc_fails_closed() -> None:
+    assert "ETC" not in SCHEMA_ENTITY_TYPES
+    with pytest.raises(ValueError):
+        EntityType("ETC")
     detection = DetectedPII(
-        entity_type=EntityType.ETC,
+        entity_type="ETC",
         original_value="기타",
         start_idx=0,
         end_idx=2,
@@ -90,7 +93,7 @@ def test_models_module_reexports_schema_ssot() -> None:
 
 def test_detection_serializes_exact_nine_field_contract() -> None:
     detection = DetectedPII(
-        entity_type=EntityType.BUSINESS_REGISTRATION_NUMBER,
+        entity_type=EntityType.KR_BRN,
         original_value="123-45-67890",
         start_idx=0,
         end_idx=12,
@@ -114,13 +117,13 @@ def test_detection_serializes_exact_nine_field_contract() -> None:
         "tier",
         "source",
     }
-    assert payload["entity_type"] == "BUSINESS_REGISTRATION_NUMBER"
+    assert payload["entity_type"] == "KR_BRN"
     assert payload["tier"] == "rule_anchored"
 
 
 def test_detection_uses_common_schema_defaults() -> None:
     detection = DetectedPII(
-        entity_type=EntityType.RRN,
+        entity_type=EntityType.KR_RRN,
         original_value="000000-0000000",
         start_idx=0,
         end_idx=14,
@@ -131,3 +134,21 @@ def test_detection_uses_common_schema_defaults() -> None:
     assert detection.tier is DetectionTier.DETERMINISTIC
     assert detection.source == "unknown"
     assert detection.layer == "unknown"
+
+
+@pytest.mark.parametrize("old_name", ["PHONE", "EMAIL", "RRN", "BUSINESS_REGISTRATION_NUMBER"])
+def test_removed_names_are_not_silently_accepted(old_name: str) -> None:
+    from privacy_proxy.risk.score import assess_risk
+    from privacy_proxy.schemas import ProxyContext
+
+    assert old_name not in SCHEMA_ENTITY_TYPES
+    detection = DetectedPII(
+        entity_type=old_name,
+        original_value="test",
+        start_idx=0,
+        end_idx=4,
+        confidence=None,
+        tier=DetectionTier.RULE_ANCHORED,
+    )
+    with pytest.raises(ValueError, match="unsupported detected entity_type"):
+        assess_risk(ProxyContext(raw_prompt="test", detected_entities=[detection]))
