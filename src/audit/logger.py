@@ -8,6 +8,20 @@ from privacy_proxy.schemas import ProxyContext
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
+_SAFE_ERROR_CODES = frozenset(
+    {
+        "L2_PARSING_FAILED",
+        "L2_REBUILD_FAILED",
+        "L3_DETECTION_FAILED",
+        "L4_DETECTION_FAILED",
+        "L5_VALIDATION_FAILED",
+        "L5_RISK_ASSESSMENT_FAILED",
+        "L6_TOKENIZATION_FAILED",
+        "L7_REQUEST_FAILED",
+        "L8_RESTORE_FAILED",
+    }
+)
+
 
 async def audit_log_l9(context: ProxyContext) -> ProxyContext:
     """
@@ -24,7 +38,6 @@ async def audit_log_l9(context: ProxyContext) -> ProxyContext:
     async def _logging_stream_wrapper(
         original_stream: AsyncGenerator[str, None],
     ) -> AsyncGenerator[str, None]:
-        full_response_text = ""
         first_token_time = None
 
         try:
@@ -32,7 +45,6 @@ async def audit_log_l9(context: ProxyContext) -> ProxyContext:
                 if first_token_time is None:
                     first_token_time = datetime.now(UTC)
 
-                full_response_text += chunk
                 yield chunk
 
         finally:
@@ -47,8 +59,6 @@ async def audit_log_l9(context: ProxyContext) -> ProxyContext:
                 (end_time - start_time).total_seconds() * 1000, 2
             )
 
-            context.final_response_log = full_response_text
-
             _print_log(context)
 
     context.final_response = _logging_stream_wrapper(context.final_response)
@@ -57,16 +67,25 @@ async def audit_log_l9(context: ProxyContext) -> ProxyContext:
 
 
 def _print_log(context: ProxyContext) -> None:
-    """
-    [추가] 실제 터미널에 JSON 포맷으로 로그를 찍는 분리된 함수
-    """
-    safe_log_data = context.model_dump(
-        exclude_none=True,
-        exclude={"parsed_request", "reconstructed_body", "llm_raw_response", "final_response"},
-    )
+    """Log operational metadata from an explicit allowlist.
 
-    if hasattr(context, "final_response_log"):
-        safe_log_data["final_response"] = context.final_response_log
+    The full context contains raw detections, token mappings, reconstructed
+    request bodies, and restored model output. None of those fields belong in
+    an audit event.
+    """
+    error_code = context.error
+    if error_code is not None and error_code not in _SAFE_ERROR_CODES:
+        error_code = "UNCLASSIFIED_FAILURE"
+    safe_log_data = {
+        "session_id": context.session_id,
+        "created_at": context.created_at,
+        "status": context.status,
+        "error_code": error_code,
+        "risk_score": context.risk_score,
+        "risk_level": context.risk_level,
+        "policy_action": context.policy_action,
+        "latency_ms": context.latency_ms,
+    }
 
     separator = "=" * 50
     logger.info(f"\n{separator}")
@@ -77,8 +96,8 @@ def _print_log(context: ProxyContext) -> None:
         logger.info(f" [L9 Audit Log] Pipeline SUCCESS (TTFT: {ttft}ms, Total: {total}ms)")
     else:
         logger.info(" [L9 Audit Log] Pipeline FAILED")
-        if context.error:
-            logger.info(f"   [Error Details] {context.error}")
+        if error_code:
+            logger.info("   [Error Code] %s", error_code)
 
     logger.info(separator)
     logger.info(json.dumps(safe_log_data, indent=2, ensure_ascii=False))

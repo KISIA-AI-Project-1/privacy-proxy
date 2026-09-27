@@ -1,6 +1,6 @@
 import re
 
-from .schemas import DetectedPII, ProxyContext
+from .schemas import DetectedPII, DetectionTier, ProxyContext
 
 
 async def mock_l3_detection(context: ProxyContext) -> ProxyContext:
@@ -10,16 +10,18 @@ async def mock_l3_detection(context: ProxyContext) -> ProxyContext:
         for match in re.finditer(phone_pattern, context.raw_prompt):
             context.detected_entities.append(
                 DetectedPII(
-                    entity_type="PHONE",
+                    entity_type="PHONE_NUMBER",
                     original_value=match.group(),
                     start_idx=match.start(),
                     end_idx=match.end(),
                     confidence=1.0,
+                    tier=DetectionTier.DETERMINISTIC,
+                    source="L3_PHONE_REGEX",
                 )
             )
-    except Exception as e:
+    except Exception:
         context.status = "failed"
-        context.error = f"L3_Error: {e!s}"
+        context.error = "L3_DETECTION_FAILED"
 
     return context
 
@@ -36,11 +38,13 @@ async def mock_l4_detection_ecommerce(context: ProxyContext) -> ProxyContext:
                     start_idx=match.start(),
                     end_idx=match.end(),
                     confidence=0.95,
+                    tier=DetectionTier.RULE_ANCHORED,
+                    source="L4_ORDER_REGEX",
                 )
             )
-    except Exception as e:
+    except Exception:
         context.status = "failed"
-        context.error = f"L4_Error: {e!s}"
+        context.error = "L4_DETECTION_FAILED"
 
     return context
 
@@ -66,9 +70,9 @@ async def mock_l5_risk_scoring(context: ProxyContext) -> ProxyContext:
 
         context.risk_score = max(0.0, min(100.0, final_score))
 
-    except Exception as e:
+    except Exception:
         context.status = "failed"
-        context.error = f"L5_Error: {e!s}"
+        context.error = "L5_RISK_ASSESSMENT_FAILED"
 
     return context
 
@@ -91,8 +95,8 @@ async def mock_l6_vault_tokenization(context: ProxyContext) -> ProxyContext:
             context.token_types[token] = entity.entity_type
 
         context.anonymized_prompt = text
-    except Exception as e:
+    except Exception:
         context.status = "failed"
-        context.error = f"L6_Error: {e!s}"
+        context.error = "L6_TOKENIZATION_FAILED"
 
     return context

@@ -45,8 +45,8 @@ async def restore_l8(context: ProxyContext) -> ProxyContext:
 
         context.final_response = _streaming_buffer()
 
-    except Exception as e:
+    except Exception:
         context.status = "failed"
-        context.error = f"L8 역치환 복원 실패: {e!s}"
+        context.error = "L8_RESTORE_FAILED"
 
     return context

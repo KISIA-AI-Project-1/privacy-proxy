@@ -59,7 +59,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/privacy_proxy"]
+packages = ["src/privacy_proxy", "src/audit", "src/restore", "src/upstream"]
 
 [tool.ruff]
 line-length = 100
@@ -91,6 +91,7 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src", "."]
 addopts = "-q --strict-markers"
 asyncio_mode = "auto"
 
