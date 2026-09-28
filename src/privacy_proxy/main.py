@@ -69,5 +69,5 @@ async def upload_log_to_s3(filename: str, content: str):
             Body=content.encode("utf-8"),
         )
         return {"status": "success", "message": f"Successfully uploaded {filename} to S3"}
-    except Exception as e: 
+    except Exception as e:
         raise HTTPException(status_code=500, detail=f"S3 업로드 실패: {e!s}") from e
