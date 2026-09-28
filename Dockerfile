@@ -29,4 +29,5 @@ COPY src/ /app/src/
 EXPOSE 8000
 
 # 9. 컨테이너가 시작될 때 FastAPI 서버를 실행하는 명령어
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "src.privacy_proxy.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+

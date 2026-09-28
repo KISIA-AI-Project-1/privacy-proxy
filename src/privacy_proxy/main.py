@@ -6,12 +6,16 @@
 
 from typing import Any, Literal
 
+import boto3
 from fastapi import Depends, FastAPI, HTTPException
 
 from privacy_proxy import __version__
 from privacy_proxy.adapters import get_current_user
 from privacy_proxy.pipeline import run_privacy_pipeline
 from privacy_proxy.schemas import UserContext
+
+s3_client = boto3.client("s3", region_name="ap-northeast-2")
+BUCKET_NAME = "privacy-proxy-storage"
 
 app = FastAPI(
     title="privacy-proxy",
@@ -53,3 +57,17 @@ async def process_chat(
         "vault_keys": list(context.vault_mapping.keys()) if context.vault_mapping else [],
         "final_response": context.final_response,
     }
+
+
+@app.post("/v1/upload-log")
+async def upload_log_to_s3(filename: str, content: str) -> dict[str, Any]:
+    """S3 버킷으로 마스킹 결과/로그 텍스트를 저장하는 엔드포인트"""
+    try:
+        s3_client.put_object(
+            Bucket=BUCKET_NAME,
+            Key=f"logs/{filename}",
+            Body=content.encode("utf-8"),
+        )
+        return {"status": "success", "message": f"Successfully uploaded {filename} to S3"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"S3 업로드 실패: {e!s}") from e
