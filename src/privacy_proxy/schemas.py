@@ -83,8 +83,15 @@ class DetectedPII(BaseModel):
     """Canonical nine-field L3/L4 detection contract.
 
     ``start_idx`` and ``end_idx`` are zero-based, half-open offsets into the
-    shared ``ProxyContext.raw_prompt``. Producers must state the evidence tier;
-    a missing confidence is represented by explicit ``None``.
+    shared ``ProxyContext.raw_prompt``.
+
+    ``confidence`` is required but may explicitly be ``None``.
+
+    ``tier`` is required and must explicitly identify one evidence tier.
+
+    Transitional defaults for ``segment_id``, ``source``, and ``normalized``
+    are preserved until the legacy mock / multi-segment boundary is migrated
+    without inventing PD-010 coordinate semantics.
     """
 
     model_config = ConfigDict(
@@ -93,15 +100,19 @@ class DetectedPII(BaseModel):
         hide_input_in_errors=True,
     )
 
-    entity_type: EntityType | str
-    original_value: str = Field(min_length=1)
+    # Canonical nine-field order.
+    segment_id: str = "seg-1"
     start_idx: int = Field(ge=0)
     end_idx: int = Field(gt=0)
+    entity_type: EntityType | str
     confidence: float | None = Field(..., ge=0.0, le=1.0)
-    segment_id: str = "seg-1"
-    normalized: str = ""
+    source: str = Field(
+        default="unknown",
+        description="탐지 출처 (예: L3_Regex, L4_BERT)",
+    )
     tier: DetectionTier
-    source: str = Field(default="unknown", description="탐지 출처 (예: L3_Regex, L4_BERT)")
+    original_value: str = Field(min_length=1)
+    normalized: str = ""
 
     @property
     def layer(self) -> str:
