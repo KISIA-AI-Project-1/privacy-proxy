@@ -60,7 +60,7 @@ async def process_chat(
 
 
 @app.post("/v1/upload-log")
-async def upload_log_to_s3(filename: str, content: str):
+async def upload_log_to_s3(filename: str, content: str) -> dict[str, Any]:
     """S3 버킷으로 마스킹 결과/로그 텍스트를 저장하는 엔드포인트"""
     try:
         s3_client.put_object(
