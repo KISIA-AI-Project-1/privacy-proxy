@@ -45,11 +45,11 @@ async def call_gemini_l7(context: ProxyContext) -> ProxyContext:
         elif vendor == "gemini":
             context.llm_raw_response = _stream_gemini(body)
         else:
-            raise ValueError(f"지원하지 않는 벤더입니다: {vendor}")
+            raise ValueError("unsupported upstream vendor")
 
-    except Exception as e:
+    except Exception:
         context.status = "failed"
-        context.error = f"L7 LLM Request Error: {e!s}"
+        context.error = "L7_REQUEST_FAILED"
 
     return context
 

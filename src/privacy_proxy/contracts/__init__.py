@@ -1,0 +1,1 @@
+"""Approved common physical contracts."""
