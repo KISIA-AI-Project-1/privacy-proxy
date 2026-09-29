@@ -2,6 +2,7 @@ import unittest
 from dataclasses import FrozenInstanceError
 
 from privacy_proxy.contracts.detection import Detection, DetectionValidationError
+from privacy_proxy.schemas import DetectionTier
 from tests.fixtures import KEYS
 
 
@@ -64,11 +65,18 @@ class DetectionTests(unittest.TestCase):
                 Detection(**values)
 
     def test_tier_vocabulary(self):
-        for tier in [None, "DETERMINISTIC", "RULE_ANCHORED", "MODEL"]:
+        for tier in [None, *DetectionTier]:
             values = self.values()
             values["tier"] = tier
-            self.assertEqual(Detection(**values).tier, tier)
-        for tier in ["CANDIDATE", "NOT_EMITTED", "DEFERRED_INSUFFICIENT_RUNTIME_EVIDENCE", []]:
+            self.assertIs(Detection(**values).tier, tier)
+        for tier in [
+            "DETERMINISTIC",
+            "RULE_ANCHORED",
+            "MODEL",
+            "CANDIDATE",
+            "deterministic",
+            [],
+        ]:
             values = self.values()
             values["tier"] = tier
             with self.assertRaises(DetectionValidationError):

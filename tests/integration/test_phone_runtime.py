@@ -13,6 +13,7 @@ from presidio_analyzer.predefined_recognizers import PhoneRecognizer
 
 from privacy_proxy.l3.registry import validate_registry
 from privacy_proxy.l3.service import L3AnalyzerService, L3RuntimeError
+from privacy_proxy.schemas import DetectionTier
 from tests.fixtures import KEYS, PASSPORT
 
 PHONE = "010-2000-0000"
@@ -37,7 +38,7 @@ class PhoneIntegrationTests(unittest.TestCase):
             self.assertEqual(d.normalized, d.original_value)
             if d.entity_type == "PHONE_NUMBER":
                 self.assertEqual(d.source, "PhoneRecognizer")
-                self.assertEqual(d.tier, "RULE_ANCHORED")
+                self.assertIs(d.tier, DetectionTier.RULE_ANCHORED)
                 self.assertEqual(d.original_value, value)
                 self.assertEqual((d.start_idx, d.end_idx), (4, 4 + len(value)))
         return out

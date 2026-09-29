@@ -16,6 +16,7 @@ from privacy_proxy.l3.email_validation import _EmailValidation, configure_email
 from privacy_proxy.l3.registry import validate_registry
 from privacy_proxy.l3.service import L3AnalyzerService, L3RuntimeError
 from privacy_proxy.l3.timeout_guard import L3DependencyTimeoutError, protect_patterns
+from privacy_proxy.schemas import DetectionTier
 from tests.fixtures import KEYS, PASSPORT
 from tests.integration.test_dependency_timeout import replace_matcher, timeout_patterns
 
@@ -42,7 +43,7 @@ class EmailIntegrationTests(unittest.TestCase):
             self.assertEqual(d.entity_type, "EMAIL_ADDRESS")
             self.assertEqual(d.segment_id, "seg-email")
             self.assertEqual(d.source, "EmailRecognizer")
-            self.assertEqual(d.tier, "RULE_ANCHORED")
+            self.assertIs(d.tier, DetectionTier.RULE_ANCHORED)
             self.assertIsNone(d.confidence)
             self.assertTrue(0 <= d.start_idx < d.end_idx <= len(text))
             self.assertEqual(text[d.start_idx : d.end_idx], d.original_value)

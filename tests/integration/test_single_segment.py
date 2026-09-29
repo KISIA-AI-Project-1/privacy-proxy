@@ -3,6 +3,7 @@ import unittest
 
 from privacy_proxy.integration.l3_output import L3Output
 from privacy_proxy.l3.service import L3AnalyzerService
+from privacy_proxy.schemas import DetectionTier
 from tests.fixtures import (
     BRN_COMPACT,
     BRN_INVALID,
@@ -35,12 +36,14 @@ class SingleSegmentTests(unittest.TestCase):
             self.assertEqual(detection.segment_id, "seg-3")
             self.assertEqual(raw[detection.start_idx : detection.end_idx], detection.original_value)
             self.assertEqual(detection.normalized, detection.original_value)
+            if detection.tier is not None:
+                self.assertIsInstance(detection.tier, DetectionTier)
         return detections
 
     def test_brn_valid_hyphenated(self):
         detected = self.detect("KR_BRN", BRN_VALID)
         self.assertEqual(len(detected), 1)
-        self.assertEqual(detected[0].tier, "DETERMINISTIC")
+        self.assertIs(detected[0].tier, DetectionTier.DETERMINISTIC)
 
     def test_brn_invalid_rejected(self):
         self.assertEqual(self.detect("KR_BRN", BRN_INVALID), [])
@@ -52,12 +55,12 @@ class SingleSegmentTests(unittest.TestCase):
         for value in [PASSPORT, PASSPORT_OLD]:
             detected = self.detect("KR_PASSPORT", value)
             self.assertEqual(len(detected), 1)
-            self.assertEqual(detected[0].tier, "RULE_ANCHORED")
+            self.assertIs(detected[0].tier, DetectionTier.RULE_ANCHORED)
 
     def test_license_structural_validation(self):
         detected = self.detect("KR_DRIVER_LICENSE", LICENSE_VALID)
         self.assertEqual(len(detected), 1)
-        self.assertEqual(detected[0].tier, "DETERMINISTIC")
+        self.assertIs(detected[0].tier, DetectionTier.DETERMINISTIC)
         self.assertEqual(self.detect("KR_DRIVER_LICENSE", LICENSE_INVALID), [])
 
     def test_rrn_soft_retention(self):

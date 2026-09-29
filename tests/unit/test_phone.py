@@ -12,6 +12,7 @@ from privacy_proxy.l3.provenance import ProvenanceError
 from privacy_proxy.l3.registry import RegistryConfigurationError, build_registry, validate_registry
 from privacy_proxy.l3.service import L3AnalyzerService, UnsupportedCapabilityError
 from privacy_proxy.l3.timeout_guard import _TimeoutMatcher, protect_patterns
+from privacy_proxy.schemas import DetectionTier
 
 # phonenumbers example metadata fixture, frozen STEP7A PHONE case P03.
 PHONE = "010-2000-0000"
@@ -74,7 +75,7 @@ class PhoneUnitTests(unittest.TestCase):
     def test_parser_evidence_not_score(self):
         for score in (0.0, 0.4, 1.0):
             detection = adapt_result(self.result(score=score), PHONE, "s", self.registry)
-            self.assertEqual(detection.tier, "RULE_ANCHORED")
+            self.assertIs(detection.tier, DetectionTier.RULE_ANCHORED)
             self.assertIsNone(detection.confidence)
         with self.assertRaisesRegex(ProvenanceError, "PHONE_PARSER"):
             adapt_result(self.result("123", 1.0), "123", "s", self.registry)

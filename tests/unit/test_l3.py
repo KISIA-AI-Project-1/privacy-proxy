@@ -15,6 +15,7 @@ from privacy_proxy.l3.registry import (
     validate_registry,
 )
 from privacy_proxy.l3.service import L3AnalyzerService, L3RuntimeError, UnsupportedCapabilityError
+from privacy_proxy.schemas import DetectionTier
 from tests.fixtures import BRN_INVALID, BRN_VALID, LICENSE_VALID, PASSPORT, RRN_VALID
 
 
@@ -76,12 +77,12 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(d.normalized, PASSPORT)
         self.assertIsNone(d.confidence)
         self.assertEqual(d.source, "KrPassportRecognizer")
-        self.assertEqual(d.tier, "RULE_ANCHORED")
+        self.assertIs(d.tier, DetectionTier.RULE_ANCHORED)
 
     def test_actual_validation_required(self):
         for entity, value in [("KR_BRN", BRN_VALID), ("KR_DRIVER_LICENSE", LICENSE_VALID)]:
             d = adapt_result(self.result(entity, value, 0.01), "!!" + value, "s", self.registry)
-            self.assertEqual(d.tier, "DETERMINISTIC")
+            self.assertIs(d.tier, DetectionTier.DETERMINISTIC)
         with self.assertRaisesRegex(ProvenanceError, "VALIDATION"):
             adapt_result(
                 self.result("KR_BRN", BRN_INVALID, 1.0), "!!" + BRN_INVALID, "s", self.registry

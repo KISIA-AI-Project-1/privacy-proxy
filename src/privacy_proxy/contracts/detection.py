@@ -2,7 +2,7 @@
 
 from dataclasses import InitVar, asdict, dataclass
 
-TIERS = frozenset(("DETERMINISTIC", "RULE_ANCHORED", "MODEL"))
+from privacy_proxy.schemas import DetectionTier
 
 
 class DetectionValidationError(ValueError):
@@ -26,7 +26,7 @@ class Detection:
     entity_type: str
     confidence: int | float | None
     source: str
-    tier: str | None
+    tier: DetectionTier | None
     original_value: str
     normalized: str
     raw_prompt: InitVar[str]
@@ -40,7 +40,7 @@ class Detection:
             raise DetectionValidationError("SOURCE_LAYER_ONLY")
         if self.confidence is not None and type(self.confidence) not in (int, float):
             raise DetectionValidationError("CONFIDENCE_TYPE")
-        if self.tier is not None and (not isinstance(self.tier, str) or self.tier not in TIERS):
+        if self.tier is not None and not isinstance(self.tier, DetectionTier):
             raise DetectionValidationError("TIER_VALUE")
         if not isinstance(self.normalized, str):
             raise DetectionValidationError("NORMALIZED_TYPE")
