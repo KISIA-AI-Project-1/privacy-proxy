@@ -20,6 +20,15 @@ L4_ENTITY_TYPES: tuple[str, ...] = ("PS", "LC")
 # 인명 누락은 곧 개인정보 유출이라 별도 지표로 추적한다.
 PRIMARY_ENTITY_TYPE = "PS"
 
+# L4가 L5로 내보내는 최종 entity_type 이름. 학습·평가·내부 처리(merge_bio_spans,
+# arbitrate_josa, metrics.py 등)는 전부 KLUE-NER 라벨("PS"/"LC") 그대로 돈다 —
+# 이 매핑은 predict_spans()가 반환하기 직전에만 적용한다. 그전에 바꾸면
+# 학습·평가 경로가 이 이름을 모르는 라벨셋과 어긋난다.
+L4_ENTITY_TYPE_MAP: dict[str, str] = {
+    "PS": "PERSON_KO",
+    "LC": "LOCATION_INFORMAL",
+}
+
 
 @dataclass(frozen=True)
 class LabelSet:

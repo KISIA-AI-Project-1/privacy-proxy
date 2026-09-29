@@ -2,9 +2,9 @@
 
 ``klue/bert-base`` 는 MLM으로 사전학습된 인코더일 뿐 NER 헤드가 없다.
 여기서 헤드를 새로 만들어 일반 도메인 NER 모델까지 끌어올린다.
-P3에서 이 결과물에 이커머스 CS 데이터로 2차 파인튜닝을 얹는다.
+이 결과물에 이커머스 CS 데이터로 2차 파인튜닝을 얹을 수 있다.
 
-그래서 하이퍼파라미터를 하드코딩하지 않고 전부 인자로 받는다. P3에서 탐색
+그래서 하이퍼파라미터를 하드코딩하지 않고 전부 인자로 받는다. 탐색
 도구를 붙일 때 이 함수를 그대로 호출하면 된다.
 
     uv run python -m l4.ner.train_klue_ner --run-name klue-ner-base-e3
@@ -48,7 +48,7 @@ EVAL_SPLIT = "validation"
 
 @dataclass
 class TrainConfig:
-    """P3에서 탐색 대상이 되는 값들."""
+    """탐색 대상이 되는 값들."""
 
     run_name: str
     lr: float = 5e-5
