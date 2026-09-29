@@ -45,9 +45,8 @@ from privacy_proxy.schemas import DetectedPII, DetectionTier
 
 _WINDOW = 25
 
-# 갈래별 confidence(임의 초기값). 동+호가 가장 구체적이고, 층 단독은
+# 갈래별 confidence. 동+호가 가장 구체적이고, 층 단독은
 # "3층짜리 건물이에요" 같은 일반 서술과 안 갈려 가장 낮다.
-# TODO(W7): 합성 평가셋 실측 후 조정.
 _ADDRESS_DETAIL_CONFIDENCE: dict[str, float] = {
     "dongho": 0.6,
     "ho": 0.45,

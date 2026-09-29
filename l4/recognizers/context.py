@@ -24,9 +24,6 @@ def has_anchor(
     문장은 "주문번호 12345" 처럼 키워드가 값 앞에 오는 게 보통이라, 앞/뒤가
     같은 거리면 앞쪽이 선택된다(앞쪽을 먼저 훑는다).
 
-    ponytail: 앞쪽 가중은 지금 "동률이면 앞" 수준이다. 뒤쪽 앵커 오탐이
-    실측(W7)에서 문제되면 뒤쪽 거리에 페널티를 주는 방식으로 올린다.
-
     Returns:
         ``(발견 여부, 가장 가까운 앵커까지 거리)``. 없으면 ``(False, window + 1)``.
     """
@@ -58,8 +55,6 @@ def score(
     앵커가 값에 붙어 있을수록(distance ↓) base_score 위로 최대 ``bonus`` 만큼
     올린다. [0, 1] 로 자른다 — confidence는 정의상 확률 범위이고, 이 값이
     그대로 L5 위험도 계산에 들어가므로 1을 넘기면 안 된다.
-
-    TODO(W7): 합성 평가셋(``adversarial.jsonl``) 실측 후 base_score·bonus 재조정.
     """
     raw = base_score + bonus * (1 - distance / window)
     return max(0.0, min(1.0, raw))

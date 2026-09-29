@@ -59,6 +59,7 @@ logs/
 l4/ner/try_it.py
 l4/recognizers/try_recognizers.py
 l4/try_pipeline.py
+l4/sensitive/try_predict.py
 l4/sensitive/data/
 l4/sensitive/prompts/
 

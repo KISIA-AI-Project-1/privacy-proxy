@@ -19,7 +19,7 @@ _R = r"(?![A-Za-z0-9])"  # 오른쪽 경계
 # "ORD-88192-KR" 같은 완전 문자 접두어는 아예 미탐지되고, "B2B-ORD-20260910
 # -8841"처럼 하이픈으로 이어진 접두어는 뒤쪽 숫자 부분("20260910-8841")만
 # 부분 매치된다. 둘 다 설계 범위 밖 — 접두어까지 넓히려면 CUSTOMER_ID와의
-# 충돌부터 재설계해야 해서 W7 실사용 빈도 확인 후 재판단.
+# 충돌부터 재설계해야 한다.
 PATTERNS: dict[str, re.Pattern[str]] = {
     "CUSTOMS_CLEARANCE_ID": re.compile(_L + r"[Pp]\d{12}" + _R),
     "ORDER_ID": re.compile(_L + r"\d{6,20}(?:-\d{1,10})?" + _R),
@@ -60,8 +60,6 @@ ORDER_ID_DATE_EXCLUDE: re.Pattern[str] = re.compile(
 #
 # 하이픈 없는 순수 숫자는 제외 — 사업자등록번호(\d{10}, EXCLUDE_PATTERNS
 # 참고)와 자릿수가 겹쳐 오탐 위험이 크다.
-# TODO: 하이픈 없는 사업자번호 실사용 빈도가 확인되면 하이픈 없는 계좌번호
-# 형식 추가 여부 결정.
 ACCOUNT_NUMBER_3GRP: re.Pattern[str] = re.compile(_L + r"\d{2,7}-\d{2,7}-\d{2,7}" + _R)
 ACCOUNT_NUMBER_2GRP: re.Pattern[str] = re.compile(_L + r"\d{3,6}-\d{6,8}" + _R)
 
