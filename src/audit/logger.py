@@ -1,5 +1,6 @@
 import json
 import logging
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 
 from privacy_proxy.schemas import ProxyContext
@@ -7,42 +8,97 @@ from privacy_proxy.schemas import ProxyContext
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
+_SAFE_ERROR_CODES = frozenset(
+    {
+        "L2_PARSING_FAILED",
+        "L2_REBUILD_FAILED",
+        "L3_DETECTION_FAILED",
+        "L4_DETECTION_FAILED",
+        "L5_VALIDATION_FAILED",
+        "L5_RISK_ASSESSMENT_FAILED",
+        "L6_TOKENIZATION_FAILED",
+        "L7_REQUEST_FAILED",
+        "L8_RESTORE_FAILED",
+    }
+)
+
 
 async def audit_log_l9(context: ProxyContext) -> ProxyContext:
     """
-    [L9 레이어]
+    [L9 레이어: 비동기 스트리밍 로거]
     """
-    # 1. 총 처리 시간 계산
-    try:
-        start_time = datetime.fromisoformat(context.created_at.replace("Z", "+00:00"))
-        end_time = datetime.now(UTC)
+    if (
+        context.status == "failed"
+        or not hasattr(context, "final_response")
+        or not context.final_response
+    ):
+        _print_log(context)
+        return context
 
-        latency = (end_time - start_time).total_seconds() * 1000
-        context.latency_ms["total_pipeline"] = round(latency, 2)
-    except Exception as e:
-        context.error = f"시간 계산 에러: {e!s}"
-        context.latency_ms["total_pipeline"] = -1.0
+    async def _logging_stream_wrapper(
+        original_stream: AsyncGenerator[str, None],
+    ) -> AsyncGenerator[str, None]:
+        first_token_time = None
 
-    # 2. 민감 정보 및 거대 JSON 페이로드 제외를 통한 가독성 확보
-    safe_log_data = context.model_dump(
-        exclude_none=True, exclude={"parsed_request", "reconstructed_body"}
-    )
+        try:
+            async for chunk in original_stream:
+                if first_token_time is None:
+                    first_token_time = datetime.now(UTC)
 
-    # 3. 터미널 로깅 및 상태 분기 출력
+                yield chunk
+
+        finally:
+            end_time = datetime.now(UTC)
+            start_time = datetime.fromisoformat(context.created_at.replace("Z", "+00:00"))
+
+            if first_token_time:
+                context.latency_ms["ttft"] = round(
+                    (first_token_time - start_time).total_seconds() * 1000, 2
+                )
+            context.latency_ms["total_pipeline"] = round(
+                (end_time - start_time).total_seconds() * 1000, 2
+            )
+
+            _print_log(context)
+
+    context.final_response = _logging_stream_wrapper(context.final_response)
+
+    return context
+
+
+def _print_log(context: ProxyContext) -> None:
+    """Log operational metadata from an explicit allowlist.
+
+    The full context contains raw detections, token mappings, reconstructed
+    request bodies, and restored model output. None of those fields belong in
+    an audit event.
+    """
+    error_code = context.error
+    if error_code is not None and error_code not in _SAFE_ERROR_CODES:
+        error_code = "UNCLASSIFIED_FAILURE"
+    safe_log_data = {
+        "session_id": context.session_id,
+        "created_at": context.created_at,
+        "status": context.status,
+        "error_code": error_code,
+        "risk_score": context.risk_score,
+        "risk_level": context.risk_level,
+        "policy_action": context.policy_action,
+        "latency_ms": context.latency_ms,
+    }
+
     separator = "=" * 50
     logger.info(f"\n{separator}")
 
     if context.status == "success":
-        logger.info(
-            f" [L9 Audit Log] Pipeline SUCCESS (Latency: {context.latency_ms.get('total_pipeline', 0)}ms)"
-        )
+        ttft = context.latency_ms.get("ttft", 0)
+        total = context.latency_ms.get("total_pipeline", 0)
+        logger.info(f" [L9 Audit Log] Pipeline SUCCESS (TTFT: {ttft}ms, Total: {total}ms)")
     else:
         logger.info(" [L9 Audit Log] Pipeline FAILED")
-        if context.error:
-            logger.info(f"   [Error Details] {context.error}")
+        if error_code:
+            logger.info("   [Error Code] %s", error_code)
 
     logger.info(separator)
     logger.info(json.dumps(safe_log_data, indent=2, ensure_ascii=False))
     logger.info(f"{separator}\n")
-
-    return context

@@ -2,6 +2,7 @@ from typing import Any
 
 from audit.logger import audit_log_l9
 from privacy_proxy.adapters import AdapterRouter
+from privacy_proxy.risk import run_l5_risk_scoring
 from privacy_proxy.schemas import ProxyContext, TextSegment, UserContext
 from restore.restorer import restore_l8
 from upstream.llm_client import call_gemini_l7
@@ -9,7 +10,6 @@ from upstream.llm_client import call_gemini_l7
 from .mock_layers import (
     mock_l3_detection,
     mock_l4_detection_ecommerce,
-    mock_l5_risk_scoring,
     mock_l6_vault_tokenization,
 )
 
@@ -22,7 +22,16 @@ async def run_privacy_pipeline(body: dict[str, Any], user: UserContext) -> Proxy
     3. L2: 가명화된 텍스트로 원본 JSON 구조 복원 (rebuild)
     4. L7~L9: LLM 호출, 복원, 감사 로깅
     """
+    if user is None:
+        user = UserContext(user_id="test_user", role="user")
+
     context = ProxyContext(user=user, user_role=user.role)
+
+    if isinstance(body, str):
+        body = {
+            "model": "gpt-4o-mini",
+            "messages": [{"role": "user", "content": body}],
+        }
 
     # [L2] 요청 파싱 (JSON -> TextSegment 리스트)
     try:
@@ -32,9 +41,9 @@ async def run_privacy_pipeline(body: dict[str, Any], user: UserContext) -> Proxy
 
         # 기존 mock_layers 하위 호환용 (세그먼트들의 텍스트를 raw_prompt에 이어붙여 전달)
         context.raw_prompt = "\n".join(seg.text for seg in parsed.segments)
-    except Exception as e:
+    except Exception:
         context.status = "failed"
-        context.error = f"L2 Parsing Error: {e!s}"
+        context.error = "L2_PARSING_FAILED"
         return context
 
     # [L3 ~ L5] 탐지 및 위험도 평가
@@ -45,7 +54,7 @@ async def run_privacy_pipeline(body: dict[str, Any], user: UserContext) -> Proxy
         context = await mock_l4_detection_ecommerce(context)
 
     if context.status == "success":
-        context = await mock_l5_risk_scoring(context)
+        context = await run_l5_risk_scoring(context)
 
     # [L6] 가명화 (토큰화)
     if context.status == "success":
@@ -67,9 +76,9 @@ async def run_privacy_pipeline(body: dict[str, Any], user: UserContext) -> Proxy
                 )
 
             context.reconstructed_body = adapter.rebuild(parsed, processed_segments)
-        except Exception as e:
+        except Exception:
             context.status = "failed"
-            context.error = f"L2 Rebuild Error: {e!s}"
+            context.error = "L2_REBUILD_FAILED"
             return context
 
     # [L7 ~ L9] LLM 호출, 응답 복원, 감사 로그

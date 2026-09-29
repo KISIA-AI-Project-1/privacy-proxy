@@ -1,11 +1,12 @@
-from unittest.mock import patch
+from collections.abc import AsyncGenerator
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from privacy_proxy.main import app
 from privacy_proxy.pipeline import run_privacy_pipeline
-from privacy_proxy.schemas import ProxyContext, UserContext
+from privacy_proxy.schemas import DetectedPII, DetectionTier, ProxyContext, UserContext
 
 client = TestClient(app)
 
@@ -33,17 +34,19 @@ async def test_full_pipeline_success() -> None:
 
     # 1. 구글 서버 대신 일해줄 가짜 함수 정의
     async def mock_call_llm(context: ProxyContext) -> ProxyContext:
-        context.llm_raw_response = f"응답: {context.anonymized_prompt}"
+        async def mock_stream() -> AsyncGenerator[str, None]:
+            yield "응답: "
+            yield context.anonymized_prompt or ""
+            yield " (테스트 완료)"
+
+        context.llm_raw_response = mock_stream()
         return context
 
     # 2. call_gemini_l7을 가짜 함수로 가로채기(patch)한 상태에서 파이프라인 실행
     with patch("privacy_proxy.pipeline.call_gemini_l7", side_effect=mock_call_llm):
         context = await run_privacy_pipeline(raw_input, user=mock_user)
 
-    with patch("privacy_proxy.pipeline.call_gemini_l7", side_effect=mock_call_llm):
-        context = await run_privacy_pipeline(raw_input, user=mock_user)
-
-    # 이 부분을 추가해서 서버에서 왜 실패했는지 에러 메시지를 출력하게 만듭니다
+    # 에러출력
     if context.status != "success":
         print(f"\n[CI 에러 원인 확인] error: {context.error}\n")
 
@@ -63,3 +66,46 @@ async def test_pipeline_with_empty_input() -> None:
 
     # 빈 값이어도 시스템이 터지지 않고 상태를 유지하는지 확인
     assert context is not None
+
+
+@pytest.mark.asyncio
+async def test_l5_failure_prevents_l6_and_l7_calls() -> None:
+    """A failed L5 boundary must not tokenize or send the request upstream."""
+    private_value = "private-person@example.com"
+    raw_input = {
+        "model": "gpt-4o-mini",
+        "messages": [{"role": "user", "content": private_value}],
+    }
+    mock_user = UserContext(user_id="test-user", role="user", department="Dev")
+
+    async def emit_unsupported_entity(context: ProxyContext) -> ProxyContext:
+        context.detected_entities.append(
+            DetectedPII(
+                entity_type="UNSUPPORTED_PRIVATE_TYPE",
+                original_value=private_value,
+                start_idx=0,
+                end_idx=len(private_value),
+                confidence=1.0,
+                tier=DetectionTier.MODEL,
+                source="INTEGRATION_TEST",
+            )
+        )
+        return context
+
+    l6 = AsyncMock()
+    l7 = AsyncMock()
+    with (
+        patch(
+            "privacy_proxy.pipeline.mock_l4_detection_ecommerce",
+            side_effect=emit_unsupported_entity,
+        ),
+        patch("privacy_proxy.pipeline.mock_l6_vault_tokenization", l6),
+        patch("privacy_proxy.pipeline.call_gemini_l7", l7),
+    ):
+        context = await run_privacy_pipeline(raw_input, user=mock_user)
+
+    assert context.status == "failed"
+    assert context.error == "L5_VALIDATION_FAILED"
+    assert private_value not in context.error
+    l6.assert_not_awaited()
+    l7.assert_not_awaited()

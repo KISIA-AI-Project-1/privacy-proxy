@@ -1,27 +1,59 @@
+"""Canonical data contracts shared by the L1-L9 pipeline."""
+
 import uuid
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-# -------------------------------------------------------------
-# 1. [L4] 추가 요청 사항
-# deterministic > rule_anchored > model > candidate
-# -------------------------------------------------------------
+
+class EntityType(StrEnum):
+    """Entity names shared by L3, L4, and downstream pipeline layers."""
+
+    # Canonical L3 producer names.
+    PERSON_EN = "PERSON_EN"
+    LOCATION = "LOCATION"
+    ADDRESS = "ADDRESS"
+    AGE = "AGE"
+    AGE_GROUP = "AGE_GROUP"
+    DATE_OF_BIRTH = "DATE_OF_BIRTH"
+    KR_RRN = "KR_RRN"
+    PHONE_NUMBER = "PHONE_NUMBER"
+    EMAIL_ADDRESS = "EMAIL_ADDRESS"
+    KR_PASSPORT = "KR_PASSPORT"
+    KR_FRN = "KR_FRN"
+    KR_DRIVER_LICENSE = "KR_DRIVER_LICENSE"
+    KR_BRN = "KR_BRN"
+
+    PERSON_KO = "PERSON_KO"
+    LOCATION_INFORMAL = "LOCATION_INFORMAL"
+    CUSTOMS_CLEARANCE_ID = "CUSTOMS_CLEARANCE_ID"
+    ORDER_ID = "ORDER_ID"
+    TRACKING_NUMBER = "TRACKING_NUMBER"
+    CUSTOMER_ID = "CUSTOMER_ID"
+    ACCOUNT_NUMBER = "ACCOUNT_NUMBER"
+    ADDRESS_ROAD = "ADDRESS_ROAD"
+    ADDRESS_LOT = "ADDRESS_LOT"
+    ADDRESS_DETAIL = "ADDRESS_DETAIL"
+    SENSITIVE_HEALTH = "SENSITIVE_HEALTH"
+    SENSITIVE_RELIGION = "SENSITIVE_RELIGION"
+    SENSITIVE_FAMILY = "SENSITIVE_FAMILY"
+    SENSITIVE_FINANCIAL = "SENSITIVE_FINANCIAL"
 
 
 class DetectionTier(StrEnum):
+    """Evidence strength for one detection instance."""
+
     DETERMINISTIC = "deterministic"
     RULE_ANCHORED = "rule_anchored"
     MODEL = "model"
     CANDIDATE = "candidate"
 
 
-# -------------------------------------------------------------
-# 1. [L1] 사용자 인증/인가 컨텍스트
-# -------------------------------------------------------------
 class UserContext(BaseModel):
+    """Authenticated user information produced by L1."""
+
     user_id: str
     department: str
     role: str
@@ -29,10 +61,9 @@ class UserContext(BaseModel):
     restore_level: str = "default"
 
 
-# -------------------------------------------------------------
-# 2. [L2] 요청 파싱 및 세그먼트 모델
-# -------------------------------------------------------------
 class TextSegment(BaseModel):
+    """One text-bearing request segment produced by L2."""
+
     segment_id: str
     path: str
     role: str | None = "user"
@@ -40,69 +71,98 @@ class TextSegment(BaseModel):
 
 
 class ParsedRequest(BaseModel):
+    """Vendor-neutral request representation."""
+
     vendor: str = "openai"
     model: str
     segments: list[TextSegment]
     original_body: dict[str, Any]
 
 
-# -------------------------------------------------------------
-# 3. [L3 ~ L4] 탐지 레이어 모델 (기존 유지)
-# -------------------------------------------------------------
 class DetectedPII(BaseModel):
-    entity_type: str
-    original_value: str
-    start_idx: int
-    end_idx: int
-    confidence: float = Field(..., ge=0.0, le=1.0)
+    """Canonical nine-field L3/L4 detection contract.
+
+    ``start_idx`` and ``end_idx`` are zero-based, half-open offsets into the
+    shared ``ProxyContext.raw_prompt``.
+
+    ``confidence`` is required but may explicitly be ``None``.
+
+    ``tier`` is required and must explicitly identify one evidence tier.
+
+    Transitional defaults for ``segment_id``, ``source``, and ``normalized``
+    are preserved until the legacy mock / multi-segment boundary is migrated
+    without inventing PD-010 coordinate semantics.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        hide_input_in_errors=True,
+    )
+
+    # Canonical nine-field order.
     segment_id: str = "seg-1"
+    start_idx: int = Field(ge=0)
+    end_idx: int = Field(gt=0)
+    entity_type: EntityType | str
+    confidence: float | None = Field(..., ge=0.0, le=1.0)
+    source: str = Field(
+        default="unknown",
+        description="탐지 출처 (예: L3_Regex, L4_BERT)",
+    )
+    tier: DetectionTier
+    original_value: str = Field(min_length=1)
+    normalized: str = ""
 
-    normalized: str = ""  # 요청 사항 기본값 제공용
-
-    # 우선순위
-    tier: DetectionTier = DetectionTier.MODEL
-    source: str = Field(default="unknown", description="탐지 출처 (예: L3_Regex, L4_BERT)")
-
-    # 기존 mock 코드 및 하위 호환성을 위한 속성 입니다
     @property
     def layer(self) -> str:
+        """Backward-compatible read-only alias for old L5 callers."""
         return self.source
 
+    @model_validator(mode="after")
+    def validate_span(self) -> "DetectedPII":
+        if self.end_idx <= self.start_idx:
+            raise ValueError("invalid detected entity span")
+        return self
 
-# -------------------------------------------------------------
-# 4. [L1~L9 공통] 파이프라인 단일 컨텍스트
-# -------------------------------------------------------------
+
 class ProxyContext(BaseModel):
+    """Shared mutable context passed through the L1-L9 pipeline."""
+
+    model_config = ConfigDict(validate_assignment=True, hide_input_in_errors=True)
+
     session_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     created_at: str = Field(
         default_factory=lambda: datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         frozen=True,
     )
 
-    # L1 결과 보관
     user: UserContext | None = None
     user_role: str = "intern"
-
-    # L2 결과 보관
     parsed_request: ParsedRequest | None = None
-    raw_prompt: str = Field(default="", exclude=True)  # 기존 호환용
+    raw_prompt: str = Field(default="", exclude=True)
+    status: str = "success"
+    error: str | None = None
 
-    # L3 ~ L5 (탐지/위험도)
     detected_entities: list[DetectedPII] = Field(default_factory=list)
     risk_score: float = Field(default=0.0, ge=0.0, le=100.0)
     risk_level: str | None = None
     risk_reasons: list[str] = Field(default_factory=list)
     policy_action: str | None = None
 
-    # L6 (가명화)
     anonymized_prompt: str | None = None
     vault_mapping: dict[str, str] = Field(default_factory=dict)
     token_types: dict[str, str] = Field(default_factory=dict)
 
-    # L7 ~ L9 (재조립, 중계, 복원, 감사)
     reconstructed_body: dict[str, Any] = Field(default_factory=dict)
-    llm_raw_response: str | None = None
-    final_response: str | None = None
+    llm_raw_response: Any = Field(default=None, exclude=True)
+    final_response: Any = Field(default=None, exclude=True)
+    final_response_log: str | None = Field(default=None, exclude=True)
     latency_ms: dict[str, float] = Field(default_factory=dict)
-    status: str = "success"
-    error: str | None = None
+
+    def validate_detected_spans(self) -> None:
+        """Validate every detection against the canonical raw-prompt offsets."""
+        for entity in self.detected_entities:
+            actual = self.raw_prompt[entity.start_idx : entity.end_idx]
+            if actual != entity.original_value:
+                raise ValueError("detected entity span mismatch")
