@@ -99,17 +99,25 @@ class SingleSegmentTests(unittest.TestCase):
         self.assertIs(detected[0].tier, DetectionTier.DETERMINISTIC)
         self.assertEqual(self.detect("KR_DRIVER_LICENSE", LICENSE_INVALID), [])
 
-    def test_rrn_soft_retention(self):
-        for value in [RRN_VALID, RRN_SOFT]:
+    def test_rrn_validation_tiers_conform_to_canonical_schema(self):
+        for value, expected_tier in (
+            (RRN_VALID, DetectionTier.DETERMINISTIC),
+            (RRN_SOFT, DetectionTier.RULE_ANCHORED),
+        ):
             detected = self.detect("KR_RRN", value)
             self.assertEqual(len(detected), 1)
-            self.assertIsNone(detected[0].tier)
+            canonical = DetectedPII.model_validate(detected[0].to_dict())
+            self.assertIs(canonical.tier, expected_tier)
 
-    def test_frn_soft_retention(self):
-        for value in [FRN_VALID, FRN_SOFT]:
+    def test_frn_validation_tiers_conform_to_canonical_schema(self):
+        for value, expected_tier in (
+            (FRN_VALID, DetectionTier.DETERMINISTIC),
+            (FRN_SOFT, DetectionTier.RULE_ANCHORED),
+        ):
             detected = self.detect("KR_FRN", value)
             self.assertEqual(len(detected), 1)
-            self.assertIsNone(detected[0].tier)
+            canonical = DetectedPII.model_validate(detected[0].to_dict())
+            self.assertIs(canonical.tier, expected_tier)
 
     def test_default_subset_and_producer_boundary(self):
         raw = " | ".join([RRN_VALID, FRN_VALID, PASSPORT, LICENSE_VALID, BRN_VALID])

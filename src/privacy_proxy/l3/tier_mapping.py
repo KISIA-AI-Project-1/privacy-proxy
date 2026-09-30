@@ -44,6 +44,16 @@ def tier_for(
         return DetectionTier.RULE_ANCHORED
     if entity == "KR_PASSPORT":
         return DetectionTier.RULE_ANCHORED
-    # The service does not retain analysis explanations. Do not infer RRN/FRN
-    # checksum outcome from 1.0/0.5 scores or their entity names.
-    return None
+    if entity in ("KR_RRN", "KR_FRN"):
+        # Re-run the actual producer validator on the emitted raw slice. A score
+        # or entity label alone is not checksum evidence.
+        try:
+            validation_result = producer.validate_result(original_value)
+        except Exception:
+            raise ProvenanceError("EMITTED_VALIDATION_FAILED") from None
+        if validation_result is True:
+            return DetectionTier.DETERMINISTIC
+        if validation_result is None:
+            return DetectionTier.RULE_ANCHORED
+        raise ProvenanceError("EMITTED_VALIDATION_NOT_RETAINED")
+    raise ProvenanceError("UNMAPPED_TIER_PRODUCER")

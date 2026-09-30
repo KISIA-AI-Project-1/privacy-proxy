@@ -16,7 +16,16 @@ from privacy_proxy.l3.registry import (
 )
 from privacy_proxy.l3.service import L3AnalyzerService, L3RuntimeError, UnsupportedCapabilityError
 from privacy_proxy.schemas import DetectionTier
-from tests.fixtures import BRN_INVALID, BRN_VALID, LICENSE_VALID, PASSPORT, RRN_VALID
+from tests.fixtures import (
+    BRN_INVALID,
+    BRN_VALID,
+    FRN_SOFT,
+    FRN_VALID,
+    LICENSE_VALID,
+    PASSPORT,
+    RRN_SOFT,
+    RRN_VALID,
+)
 
 
 class RegistryTests(unittest.TestCase):
@@ -88,12 +97,44 @@ class AdapterTests(unittest.TestCase):
                 self.result("KR_BRN", BRN_INVALID, 1.0), "!!" + BRN_INVALID, "s", self.registry
             )
 
-    def test_rrn_score_does_not_determine_tier(self):
-        for score in [0.5, 1.0]:
-            d = adapt_result(
-                self.result("KR_RRN", RRN_VALID, score), "!!" + RRN_VALID, "s", self.registry
-            )
-            self.assertIsNone(d.tier)
+    def test_rrn_frn_validation_not_score_determines_tier(self):
+        cases = (
+            ("KR_RRN", RRN_VALID, DetectionTier.DETERMINISTIC),
+            ("KR_RRN", RRN_SOFT, DetectionTier.RULE_ANCHORED),
+            ("KR_FRN", FRN_VALID, DetectionTier.DETERMINISTIC),
+            ("KR_FRN", FRN_SOFT, DetectionTier.RULE_ANCHORED),
+        )
+        for entity, value, expected_tier in cases:
+            for score in (0.01, 0.5, 1.0):
+                with self.subTest(entity=entity, value=value, score=score):
+                    detection = adapt_result(
+                        self.result(entity, value, score),
+                        "!!" + value,
+                        "s",
+                        self.registry,
+                    )
+                    self.assertIs(detection.tier, expected_tier)
+
+    def test_rrn_frn_unexpected_validation_fails_closed(self):
+        for entity, value in (("KR_RRN", RRN_VALID), ("KR_FRN", FRN_VALID)):
+            producer = validate_registry(self.registry)[entity]
+            with (
+                self.subTest(entity=entity, outcome=False),
+                patch.object(producer, "validate_result", return_value=False),
+                self.assertRaisesRegex(ProvenanceError, "NOT_RETAINED"),
+            ):
+                adapt_result(self.result(entity, value), "!!" + value, "s", self.registry)
+            with (
+                self.subTest(entity=entity, outcome="exception"),
+                patch.object(
+                    producer,
+                    "validate_result",
+                    side_effect=RuntimeError("SYNTHETIC_PRIVATE_ERROR"),
+                ),
+                self.assertRaisesRegex(ProvenanceError, "VALIDATION_FAILED") as caught,
+            ):
+                adapt_result(self.result(entity, value), "!!" + value, "s", self.registry)
+            self.assertNotIn("SYNTHETIC_PRIVATE_ERROR", str(caught.exception))
 
     def test_missing_metadata_unique_producer_fallback(self):
         result = self.result("KR_PASSPORT", PASSPORT)
