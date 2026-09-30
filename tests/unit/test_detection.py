@@ -1,70 +1,46 @@
 import unittest
-from dataclasses import FrozenInstanceError
 
-from privacy_proxy.contracts.detection import Detection, DetectionValidationError
-from privacy_proxy.schemas import DetectionTier
+from pydantic import ValidationError
+
+from privacy_proxy.contracts.detection import DetectionValidationError, validate_span
+from privacy_proxy.integration.l3_output import L3Output
+from privacy_proxy.schemas import DetectedPII, DetectionTier
 from tests.fixtures import KEYS
 
 
-class DetectionTests(unittest.TestCase):
-    def values(self):
-        return {
+class DetectionBoundaryTests(unittest.TestCase):
+    def detection(self, **overrides):
+        values = {
             "segment_id": "seg-1",
             "start_idx": 1,
             "end_idx": 4,
             "entity_type": "KR_PASSPORT",
             "confidence": None,
             "source": "ActualProducer",
-            "tier": None,
+            "tier": DetectionTier.RULE_ANCHORED,
             "original_value": "abc",
             "normalized": "abc",
-            "raw_prompt": "!abc!",
         }
+        values.update(overrides)
+        return DetectedPII(**values)
 
-    def test_exact_serialization_and_null_keys(self):
-        result = Detection(**self.values()).to_dict()
-        self.assertEqual(set(result), KEYS)
-        self.assertIsNone(result["confidence"])
-        self.assertIsNone(result["tier"])
+    def test_canonical_serialization_has_exact_nine_fields(self):
+        detection = self.detection()
+        payload = detection.model_dump()
+        self.assertEqual(tuple(payload), tuple(DetectedPII.model_fields))
+        self.assertEqual(set(payload), KEYS)
+        self.assertIsNone(payload["confidence"])
+        self.assertIs(payload["tier"], DetectionTier.RULE_ANCHORED)
 
-    def test_all_fields_required(self):
-        for field in KEYS:
-            values = self.values()
-            del values[field]
-            with self.subTest(field=field), self.assertRaises(TypeError):
-                Detection(**values)
+    def test_validate_span_accepts_valid_raw_coordinates(self):
+        validate_span("!abc!", 1, 4)
 
-    def test_invalid_spans(self):
-        for start, end in [(-1, 3), (3, 3), (4, 2), (1, 99), (True, 4), (1.0, 4)]:
-            values = self.values()
-            values.update(start_idx=start, end_idx=end)
+    def test_validate_span_rejects_invalid_coordinates(self):
+        for start, end in ((-1, 3), (3, 3), (4, 2), (1, 99), (True, 4), (1.0, 4)):
             with self.subTest(start=start, end=end), self.assertRaises(DetectionValidationError):
-                Detection(**values)
+                validate_span("!abc!", start, end)
 
-    def test_mismatch_rejected(self):
-        values = self.values()
-        values["original_value"] = "mismatch"
-        with self.assertRaisesRegex(DetectionValidationError, "ORIGINAL_VALUE_MISMATCH"):
-            Detection(**values)
-
-    def test_non_null_and_nonempty_policies(self):
-        for key, value in [
-            ("normalized", None),
-            ("original_value", None),
-            ("source", ""),
-            ("source", None),
-            ("source", "L3"),
-            ("segment_id", None),
-            ("segment_id", " "),
-            ("entity_type", ""),
-            ("confidence", "high"),
-        ]:
-            values = self.values()
-            values[key] = value
-            with self.subTest(key=key), self.assertRaises(DetectionValidationError):
-                Detection(**values)
-
-    def test_confidence_uses_canonical_coercion_and_range(self):
+    def test_canonical_confidence_coercion_and_range(self):
         for confidence, expected in (
             (None, None),
             (0.0, 0.0),
@@ -76,44 +52,61 @@ class DetectionTests(unittest.TestCase):
             (False, 0.0),
             ("0.5", 0.5),
         ):
-            values = self.values()
-            values["confidence"] = confidence
-            actual = Detection(**values).confidence
-            self.assertEqual(actual, expected)
-            if actual is not None:
-                self.assertIs(type(actual), float)
-
+            with self.subTest(confidence=confidence):
+                self.assertEqual(self.detection(confidence=confidence).confidence, expected)
         for confidence in (-0.1, 1.1, float("nan"), float("inf")):
-            values = self.values()
-            values["confidence"] = confidence
-            with self.subTest(confidence=confidence), self.assertRaises(DetectionValidationError):
-                Detection(**values)
+            with self.subTest(confidence=confidence), self.assertRaises(ValidationError):
+                self.detection(confidence=confidence)
 
-    def test_tier_vocabulary(self):
-        for tier in [None, *DetectionTier]:
-            values = self.values()
-            values["tier"] = tier
-            self.assertIs(Detection(**values).tier, tier)
-        for tier in [
-            "DETERMINISTIC",
-            "RULE_ANCHORED",
-            "MODEL",
-            "CANDIDATE",
-            "deterministic",
-            [],
-        ]:
-            values = self.values()
-            values["tier"] = tier
-            with self.assertRaises(DetectionValidationError):
-                Detection(**values)
+    def test_l3_output_accepts_canonical_tuple(self):
+        detection = self.detection()
+        output = L3Output("!abc!", (detection,))
+        self.assertEqual(output.detections, (detection,))
+        self.assertNotIn("abc", repr(output))
 
-    def test_normalized_does_not_require_raw_equality(self):
-        values = self.values()
-        values["normalized"] = "ABC"
-        self.assertEqual(Detection(**values).normalized, "ABC")
+    def test_l3_output_requires_tuple_and_canonical_items(self):
+        detection = self.detection()
+        with self.assertRaisesRegex(ValueError, "TUPLE"):
+            L3Output("!abc!", [detection])
+        with self.assertRaisesRegex(ValueError, "DETECTION_TYPE"):
+            L3Output("!abc!", (object(),))
 
-    def test_immutable_and_repr_private(self):
-        detection = Detection(**self.values())
-        self.assertNotIn("abc", repr(detection))
-        with self.assertRaises(FrozenInstanceError):
-            detection.original_value = "changed"
+    def test_l3_output_rejects_non_null_confidence(self):
+        with self.assertRaisesRegex(ValueError, "CONFIDENCE"):
+            L3Output("!abc!", (self.detection(confidence=0.5),))
+
+    def test_l3_output_rejects_end_beyond_raw_prompt(self):
+        with self.assertRaisesRegex(DetectionValidationError, "SPAN_BOUNDS"):
+            L3Output("!abc!", (self.detection(end_idx=99),))
+
+    def test_l3_output_rejects_invalid_ordering(self):
+        invalid = DetectedPII.model_construct(
+            segment_id="seg-1",
+            start_idx=4,
+            end_idx=2,
+            entity_type="KR_PASSPORT",
+            confidence=None,
+            source="ActualProducer",
+            tier=DetectionTier.RULE_ANCHORED,
+            original_value="abc",
+            normalized="abc",
+        )
+        with self.assertRaisesRegex(ValueError, "DETECTION_SCHEMA"):
+            L3Output("!abc!", (invalid,))
+
+    def test_l3_output_rejects_raw_binding_mismatch_without_pii(self):
+        private_value = "private-value"
+        detection = self.detection(original_value=private_value)
+        with self.assertRaisesRegex(DetectionValidationError, "ORIGINAL_VALUE_MISMATCH") as caught:
+            L3Output("!abc!", (detection,))
+        self.assertNotIn(private_value, str(caught.exception))
+
+    def test_l3_output_rejects_multiple_segments(self):
+        with self.assertRaisesRegex(ValueError, "MULTI_SEGMENT"):
+            L3Output(
+                "!abc!",
+                (
+                    self.detection(segment_id="seg-1"),
+                    self.detection(segment_id="seg-2"),
+                ),
+            )

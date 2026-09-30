@@ -14,7 +14,7 @@ def tier_for(
     producer: Any,
     entity: str,
     original_value: str,
-) -> DetectionTier | None:
+) -> DetectionTier:
     if entity not in PRODUCER_TYPES or type(producer) is not PRODUCER_TYPES[entity]:
         raise ProvenanceError("UNVERIFIED_TIER_PRODUCER")
     if entity in ("KR_BRN", "KR_DRIVER_LICENSE"):

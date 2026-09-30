@@ -30,7 +30,7 @@ class PhoneIntegrationTests(unittest.TestCase):
         raw = "\uac80\uc0ac: " + value + " !"
         out = self.service.analyze(raw, "seg-phone", entities=entities)
         for d in out:
-            self.assertEqual(set(d.to_dict()), KEYS)
+            self.assertEqual(set(d.model_dump()), KEYS)
             self.assertIsNone(d.confidence)
             self.assertEqual(d.segment_id, "seg-phone")
             self.assertTrue(0 <= d.start_idx < d.end_idx <= len(raw))

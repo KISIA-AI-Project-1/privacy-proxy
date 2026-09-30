@@ -30,7 +30,8 @@ class SingleSegmentTests(unittest.TestCase):
         raw = "\uac80\uc0ac: " + value + " !"
         detections = self.service.analyze(raw, "seg-3", entities=[entity])
         for detection in detections:
-            self.assertEqual(set(detection.to_dict()), KEYS)
+            self.assertIsInstance(detection, DetectedPII)
+            self.assertEqual(set(detection.model_dump()), KEYS)
             self.assertIsNone(detection.confidence)
             self.assertTrue(detection.source)
             self.assertEqual(detection.segment_id, "seg-3")
@@ -55,7 +56,7 @@ class SingleSegmentTests(unittest.TestCase):
                 detections = self.service.analyze(raw, "canonical-segment", entities=[entity])
                 self.assertEqual(len(detections), 1)
 
-                payload = detections[0].to_dict()
+                payload = detections[0].model_dump()
                 self.assertEqual(tuple(payload), tuple(DetectedPII.model_fields))
                 self.assertEqual(set(payload), KEYS)
 
@@ -106,8 +107,9 @@ class SingleSegmentTests(unittest.TestCase):
         ):
             detected = self.detect("KR_RRN", value)
             self.assertEqual(len(detected), 1)
-            canonical = DetectedPII.model_validate(detected[0].to_dict())
+            canonical = DetectedPII.model_validate(detected[0].model_dump())
             self.assertIs(canonical.tier, expected_tier)
+            self.assertEqual(canonical.source, "KrRrnRecognizer")
 
     def test_frn_validation_tiers_conform_to_canonical_schema(self):
         for value, expected_tier in (
@@ -116,8 +118,9 @@ class SingleSegmentTests(unittest.TestCase):
         ):
             detected = self.detect("KR_FRN", value)
             self.assertEqual(len(detected), 1)
-            canonical = DetectedPII.model_validate(detected[0].to_dict())
+            canonical = DetectedPII.model_validate(detected[0].model_dump())
             self.assertIs(canonical.tier, expected_tier)
+            self.assertEqual(canonical.source, "KrFrnRecognizer")
 
     def test_default_subset_and_producer_boundary(self):
         raw = " | ".join([RRN_VALID, FRN_VALID, PASSPORT, LICENSE_VALID, BRN_VALID])

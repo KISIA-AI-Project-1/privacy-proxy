@@ -1,6 +1,6 @@
 """Single complete raw_prompt only; no segment-local/global conversion."""
 
-from privacy_proxy.contracts.detection import Detection
+from privacy_proxy.schemas import DetectedPII
 
 from .analyzer_factory import build_analyzer
 from .detection_adapter import adapt_result
@@ -30,7 +30,7 @@ class L3AnalyzerService:
         segment_id: str,
         language: str = "ko",
         entities: list[str] | tuple[str, ...] | None = None,
-    ) -> list[Detection]:
+    ) -> list[DetectedPII]:
         if not isinstance(raw_prompt, str):
             raise ValueError("RAW_PROMPT_TYPE")
         if not isinstance(segment_id, str) or not segment_id.strip():

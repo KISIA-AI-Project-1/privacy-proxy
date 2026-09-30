@@ -15,7 +15,7 @@ from privacy_proxy.l3.registry import (
     validate_registry,
 )
 from privacy_proxy.l3.service import L3AnalyzerService, L3RuntimeError, UnsupportedCapabilityError
-from privacy_proxy.schemas import DetectionTier
+from privacy_proxy.schemas import DetectedPII, DetectionTier
 from tests.fixtures import (
     BRN_INVALID,
     BRN_VALID,
@@ -81,6 +81,7 @@ class AdapterTests(unittest.TestCase):
     def test_offsets_identity_confidence_source(self):
         result = self.result("KR_PASSPORT", PASSPORT, 1.0)
         d = adapt_result(result, "!!" + PASSPORT + "!", "segment", self.registry)
+        self.assertIsInstance(d, DetectedPII)
         self.assertEqual((d.start_idx, d.end_idx), (result.start, result.end))
         self.assertEqual(d.original_value, PASSPORT)
         self.assertEqual(d.normalized, PASSPORT)
@@ -209,6 +210,7 @@ class ServiceTests(unittest.TestCase):
 
     def test_producer_output_rechecks_raw_span(self):
         detections = self.service.analyze(PASSPORT, "s", entities=["KR_PASSPORT"])
+        self.assertTrue(all(isinstance(item, DetectedPII) for item in detections))
         output = L3Output(PASSPORT, tuple(detections))
         self.assertNotIn(PASSPORT, repr(output))
         with self.assertRaises(DetectionValidationError):

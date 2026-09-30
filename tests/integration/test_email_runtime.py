@@ -39,7 +39,7 @@ class EmailIntegrationTests(unittest.TestCase):
     def detect(self, text, service=None):
         out = (service or self.service).analyze(text, "seg-email", entities=["EMAIL_ADDRESS"])
         for d in out:
-            self.assertEqual(set(d.to_dict()), KEYS)
+            self.assertEqual(set(d.model_dump()), KEYS)
             self.assertEqual(d.entity_type, "EMAIL_ADDRESS")
             self.assertEqual(d.segment_id, "seg-email")
             self.assertEqual(d.source, "EmailRecognizer")
@@ -190,7 +190,7 @@ class EmailIntegrationTests(unittest.TestCase):
             outputs = []
             for _ in range(3):
                 service = L3AnalyzerService()
-                outputs.append([d.to_dict() for d in self.detect(EMAIL, service)])
+                outputs.append([d.model_dump() for d in self.detect(EMAIL, service)])
             self.assertEqual(outputs[0], outputs[1])
             self.assertEqual(outputs[1], outputs[2])
             for mock in forbidden:
