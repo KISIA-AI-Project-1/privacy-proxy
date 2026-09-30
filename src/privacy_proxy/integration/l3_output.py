@@ -2,35 +2,35 @@
 
 from dataclasses import dataclass
 
-from privacy_proxy.contracts.detection import Detection
+from pydantic import ValidationError
+
+from privacy_proxy.contracts.detection import DetectionValidationError, validate_span
+from privacy_proxy.schemas import DetectedPII
 
 
 @dataclass(frozen=True, repr=False)
 class L3Output:
     raw_prompt: str
-    detections: tuple[Detection, ...]
+    detections: tuple[DetectedPII, ...]
 
     def __post_init__(self) -> None:
         if not isinstance(self.raw_prompt, str):
             raise ValueError("RAW_PROMPT_TYPE")
         if not isinstance(self.detections, tuple):
             raise ValueError("DETECTIONS_TUPLE_REQUIRED")
+        segment_ids: set[str] = set()
         for detection in self.detections:
-            if not isinstance(detection, Detection):
+            if not isinstance(detection, DetectedPII):
                 raise ValueError("DETECTION_TYPE")
-            Detection(
-                segment_id=detection.segment_id,
-                start_idx=detection.start_idx,
-                end_idx=detection.end_idx,
-                entity_type=detection.entity_type,
-                confidence=detection.confidence,
-                source=detection.source,
-                tier=detection.tier,
-                original_value=detection.original_value,
-                normalized=detection.normalized,
-                raw_prompt=self.raw_prompt,
-            )
-            if detection.confidence is not None:
+            try:
+                canonical = DetectedPII.model_validate(detection.model_dump())
+            except ValidationError:
+                raise ValueError("DETECTION_SCHEMA") from None
+            validate_span(self.raw_prompt, canonical.start_idx, canonical.end_idx)
+            if self.raw_prompt[canonical.start_idx : canonical.end_idx] != canonical.original_value:
+                raise DetectionValidationError("ORIGINAL_VALUE_MISMATCH")
+            if canonical.confidence is not None:
                 raise ValueError("L3_CONFIDENCE_MUST_BE_NULL")
-        if len({item.segment_id for item in self.detections}) > 1:
+            segment_ids.add(canonical.segment_id)
+        if len(segment_ids) > 1:
             raise ValueError("MULTI_SEGMENT_NOT_IMPLEMENTED")

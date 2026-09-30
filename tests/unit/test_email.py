@@ -23,6 +23,7 @@ from privacy_proxy.l3.timeout_guard import (
     TimeoutCallable,
     protect_callable,
 )
+from privacy_proxy.schemas import DetectionTier
 
 EMAIL = "Audit+tag@Example.com"
 
@@ -141,7 +142,7 @@ class EmailUnitTests(unittest.TestCase):
     def test_tier_requires_full_pattern_and_validation_not_score(self):
         for score in (0.0, 0.5, 1.0):
             d = adapt_result(self.result(score=score), EMAIL, "seg-email", self.registry)
-            self.assertEqual(d.tier, "RULE_ANCHORED")
+            self.assertIs(d.tier, DetectionTier.RULE_ANCHORED)
             self.assertEqual(d.source, "EmailRecognizer")
             self.assertIsNone(d.confidence)
             self.assertEqual(d.normalized, EMAIL)

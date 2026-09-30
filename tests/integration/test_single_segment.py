@@ -3,6 +3,7 @@ import unittest
 
 from privacy_proxy.integration.l3_output import L3Output
 from privacy_proxy.l3.service import L3AnalyzerService
+from privacy_proxy.schemas import DetectedPII, DetectionTier
 from tests.fixtures import (
     BRN_COMPACT,
     BRN_INVALID,
@@ -29,18 +30,57 @@ class SingleSegmentTests(unittest.TestCase):
         raw = "\uac80\uc0ac: " + value + " !"
         detections = self.service.analyze(raw, "seg-3", entities=[entity])
         for detection in detections:
-            self.assertEqual(set(detection.to_dict()), KEYS)
+            self.assertIsInstance(detection, DetectedPII)
+            self.assertEqual(set(detection.model_dump()), KEYS)
             self.assertIsNone(detection.confidence)
             self.assertTrue(detection.source)
             self.assertEqual(detection.segment_id, "seg-3")
             self.assertEqual(raw[detection.start_idx : detection.end_idx], detection.original_value)
             self.assertEqual(detection.normalized, detection.original_value)
+            if detection.tier is not None:
+                self.assertIsInstance(detection.tier, DetectionTier)
         return detections
+
+    def test_resolved_producers_conform_to_canonical_schema(self):
+        cases = (
+            ("KR_PASSPORT", PASSPORT, "KrPassportRecognizer"),
+            ("KR_DRIVER_LICENSE", LICENSE_VALID, "KrDriverLicenseRecognizer"),
+            ("KR_BRN", BRN_VALID, "KrBrnRecognizer"),
+            ("PHONE_NUMBER", "010-2000-0000", "PhoneRecognizer"),
+            ("EMAIL_ADDRESS", "audit@example.com", "EmailRecognizer"),
+        )
+
+        for entity, value, expected_source in cases:
+            with self.subTest(entity=entity):
+                raw = "검사: " + value + " !"
+                detections = self.service.analyze(raw, "canonical-segment", entities=[entity])
+                self.assertEqual(len(detections), 1)
+
+                payload = detections[0].model_dump()
+                self.assertEqual(tuple(payload), tuple(DetectedPII.model_fields))
+                self.assertEqual(set(payload), KEYS)
+
+                canonical = DetectedPII.model_validate(payload)
+                self.assertIsInstance(canonical.tier, DetectionTier)
+                self.assertIsNotNone(canonical.tier)
+                self.assertIsNone(canonical.confidence)
+                self.assertEqual(canonical.source, expected_source)
+                self.assertTrue(0 <= canonical.start_idx < canonical.end_idx <= len(raw))
+                self.assertEqual(
+                    raw[canonical.start_idx : canonical.end_idx],
+                    canonical.original_value,
+                )
+                self.assertEqual(canonical.normalized, canonical.original_value)
+
+                json_payload = canonical.model_dump(mode="json")
+                self.assertEqual(tuple(json_payload), tuple(DetectedPII.model_fields))
+                self.assertEqual(json_payload["tier"], canonical.tier.value)
+                self.assertEqual(json_payload["tier"], json_payload["tier"].lower())
 
     def test_brn_valid_hyphenated(self):
         detected = self.detect("KR_BRN", BRN_VALID)
         self.assertEqual(len(detected), 1)
-        self.assertEqual(detected[0].tier, "DETERMINISTIC")
+        self.assertIs(detected[0].tier, DetectionTier.DETERMINISTIC)
 
     def test_brn_invalid_rejected(self):
         self.assertEqual(self.detect("KR_BRN", BRN_INVALID), [])
@@ -52,25 +92,35 @@ class SingleSegmentTests(unittest.TestCase):
         for value in [PASSPORT, PASSPORT_OLD]:
             detected = self.detect("KR_PASSPORT", value)
             self.assertEqual(len(detected), 1)
-            self.assertEqual(detected[0].tier, "RULE_ANCHORED")
+            self.assertIs(detected[0].tier, DetectionTier.RULE_ANCHORED)
 
     def test_license_structural_validation(self):
         detected = self.detect("KR_DRIVER_LICENSE", LICENSE_VALID)
         self.assertEqual(len(detected), 1)
-        self.assertEqual(detected[0].tier, "DETERMINISTIC")
+        self.assertIs(detected[0].tier, DetectionTier.DETERMINISTIC)
         self.assertEqual(self.detect("KR_DRIVER_LICENSE", LICENSE_INVALID), [])
 
-    def test_rrn_soft_retention(self):
-        for value in [RRN_VALID, RRN_SOFT]:
+    def test_rrn_validation_tiers_conform_to_canonical_schema(self):
+        for value, expected_tier in (
+            (RRN_VALID, DetectionTier.DETERMINISTIC),
+            (RRN_SOFT, DetectionTier.RULE_ANCHORED),
+        ):
             detected = self.detect("KR_RRN", value)
             self.assertEqual(len(detected), 1)
-            self.assertIsNone(detected[0].tier)
+            canonical = DetectedPII.model_validate(detected[0].model_dump())
+            self.assertIs(canonical.tier, expected_tier)
+            self.assertEqual(canonical.source, "KrRrnRecognizer")
 
-    def test_frn_soft_retention(self):
-        for value in [FRN_VALID, FRN_SOFT]:
+    def test_frn_validation_tiers_conform_to_canonical_schema(self):
+        for value, expected_tier in (
+            (FRN_VALID, DetectionTier.DETERMINISTIC),
+            (FRN_SOFT, DetectionTier.RULE_ANCHORED),
+        ):
             detected = self.detect("KR_FRN", value)
             self.assertEqual(len(detected), 1)
-            self.assertIsNone(detected[0].tier)
+            canonical = DetectedPII.model_validate(detected[0].model_dump())
+            self.assertIs(canonical.tier, expected_tier)
+            self.assertEqual(canonical.source, "KrFrnRecognizer")
 
     def test_default_subset_and_producer_boundary(self):
         raw = " | ".join([RRN_VALID, FRN_VALID, PASSPORT, LICENSE_VALID, BRN_VALID])

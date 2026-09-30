@@ -15,7 +15,17 @@ from privacy_proxy.l3.registry import (
     validate_registry,
 )
 from privacy_proxy.l3.service import L3AnalyzerService, L3RuntimeError, UnsupportedCapabilityError
-from tests.fixtures import BRN_INVALID, BRN_VALID, LICENSE_VALID, PASSPORT, RRN_VALID
+from privacy_proxy.schemas import DetectedPII, DetectionTier
+from tests.fixtures import (
+    BRN_INVALID,
+    BRN_VALID,
+    FRN_SOFT,
+    FRN_VALID,
+    LICENSE_VALID,
+    PASSPORT,
+    RRN_SOFT,
+    RRN_VALID,
+)
 
 
 class RegistryTests(unittest.TestCase):
@@ -71,28 +81,61 @@ class AdapterTests(unittest.TestCase):
     def test_offsets_identity_confidence_source(self):
         result = self.result("KR_PASSPORT", PASSPORT, 1.0)
         d = adapt_result(result, "!!" + PASSPORT + "!", "segment", self.registry)
+        self.assertIsInstance(d, DetectedPII)
         self.assertEqual((d.start_idx, d.end_idx), (result.start, result.end))
         self.assertEqual(d.original_value, PASSPORT)
         self.assertEqual(d.normalized, PASSPORT)
         self.assertIsNone(d.confidence)
         self.assertEqual(d.source, "KrPassportRecognizer")
-        self.assertEqual(d.tier, "RULE_ANCHORED")
+        self.assertIs(d.tier, DetectionTier.RULE_ANCHORED)
 
     def test_actual_validation_required(self):
         for entity, value in [("KR_BRN", BRN_VALID), ("KR_DRIVER_LICENSE", LICENSE_VALID)]:
             d = adapt_result(self.result(entity, value, 0.01), "!!" + value, "s", self.registry)
-            self.assertEqual(d.tier, "DETERMINISTIC")
+            self.assertIs(d.tier, DetectionTier.DETERMINISTIC)
         with self.assertRaisesRegex(ProvenanceError, "VALIDATION"):
             adapt_result(
                 self.result("KR_BRN", BRN_INVALID, 1.0), "!!" + BRN_INVALID, "s", self.registry
             )
 
-    def test_rrn_score_does_not_determine_tier(self):
-        for score in [0.5, 1.0]:
-            d = adapt_result(
-                self.result("KR_RRN", RRN_VALID, score), "!!" + RRN_VALID, "s", self.registry
-            )
-            self.assertIsNone(d.tier)
+    def test_rrn_frn_validation_not_score_determines_tier(self):
+        cases = (
+            ("KR_RRN", RRN_VALID, DetectionTier.DETERMINISTIC),
+            ("KR_RRN", RRN_SOFT, DetectionTier.RULE_ANCHORED),
+            ("KR_FRN", FRN_VALID, DetectionTier.DETERMINISTIC),
+            ("KR_FRN", FRN_SOFT, DetectionTier.RULE_ANCHORED),
+        )
+        for entity, value, expected_tier in cases:
+            for score in (0.01, 0.5, 1.0):
+                with self.subTest(entity=entity, value=value, score=score):
+                    detection = adapt_result(
+                        self.result(entity, value, score),
+                        "!!" + value,
+                        "s",
+                        self.registry,
+                    )
+                    self.assertIs(detection.tier, expected_tier)
+
+    def test_rrn_frn_unexpected_validation_fails_closed(self):
+        for entity, value in (("KR_RRN", RRN_VALID), ("KR_FRN", FRN_VALID)):
+            producer = validate_registry(self.registry)[entity]
+            with (
+                self.subTest(entity=entity, outcome=False),
+                patch.object(producer, "validate_result", return_value=False),
+                self.assertRaisesRegex(ProvenanceError, "NOT_RETAINED"),
+            ):
+                adapt_result(self.result(entity, value), "!!" + value, "s", self.registry)
+            with (
+                self.subTest(entity=entity, outcome="exception"),
+                patch.object(
+                    producer,
+                    "validate_result",
+                    side_effect=RuntimeError("SYNTHETIC_PRIVATE_ERROR"),
+                ),
+                self.assertRaisesRegex(ProvenanceError, "VALIDATION_FAILED") as caught,
+            ):
+                adapt_result(self.result(entity, value), "!!" + value, "s", self.registry)
+            self.assertNotIn("SYNTHETIC_PRIVATE_ERROR", str(caught.exception))
 
     def test_missing_metadata_unique_producer_fallback(self):
         result = self.result("KR_PASSPORT", PASSPORT)
@@ -167,6 +210,7 @@ class ServiceTests(unittest.TestCase):
 
     def test_producer_output_rechecks_raw_span(self):
         detections = self.service.analyze(PASSPORT, "s", entities=["KR_PASSPORT"])
+        self.assertTrue(all(isinstance(item, DetectedPII) for item in detections))
         output = L3Output(PASSPORT, tuple(detections))
         self.assertNotIn(PASSPORT, repr(output))
         with self.assertRaises(DetectionValidationError):
