@@ -3,7 +3,7 @@ import unittest
 
 from privacy_proxy.integration.l3_output import L3Output
 from privacy_proxy.l3.service import L3AnalyzerService
-from privacy_proxy.schemas import DetectionTier
+from privacy_proxy.schemas import DetectedPII, DetectionTier
 from tests.fixtures import (
     BRN_COMPACT,
     BRN_INVALID,
@@ -39,6 +39,42 @@ class SingleSegmentTests(unittest.TestCase):
             if detection.tier is not None:
                 self.assertIsInstance(detection.tier, DetectionTier)
         return detections
+
+    def test_resolved_producers_conform_to_canonical_schema(self):
+        cases = (
+            ("KR_PASSPORT", PASSPORT, "KrPassportRecognizer"),
+            ("KR_DRIVER_LICENSE", LICENSE_VALID, "KrDriverLicenseRecognizer"),
+            ("KR_BRN", BRN_VALID, "KrBrnRecognizer"),
+            ("PHONE_NUMBER", "010-2000-0000", "PhoneRecognizer"),
+            ("EMAIL_ADDRESS", "audit@example.com", "EmailRecognizer"),
+        )
+
+        for entity, value, expected_source in cases:
+            with self.subTest(entity=entity):
+                raw = "검사: " + value + " !"
+                detections = self.service.analyze(raw, "canonical-segment", entities=[entity])
+                self.assertEqual(len(detections), 1)
+
+                payload = detections[0].to_dict()
+                self.assertEqual(tuple(payload), tuple(DetectedPII.model_fields))
+                self.assertEqual(set(payload), KEYS)
+
+                canonical = DetectedPII.model_validate(payload)
+                self.assertIsInstance(canonical.tier, DetectionTier)
+                self.assertIsNotNone(canonical.tier)
+                self.assertIsNone(canonical.confidence)
+                self.assertEqual(canonical.source, expected_source)
+                self.assertTrue(0 <= canonical.start_idx < canonical.end_idx <= len(raw))
+                self.assertEqual(
+                    raw[canonical.start_idx : canonical.end_idx],
+                    canonical.original_value,
+                )
+                self.assertEqual(canonical.normalized, canonical.original_value)
+
+                json_payload = canonical.model_dump(mode="json")
+                self.assertEqual(tuple(json_payload), tuple(DetectedPII.model_fields))
+                self.assertEqual(json_payload["tier"], canonical.tier.value)
+                self.assertEqual(json_payload["tier"], json_payload["tier"].lower())
 
     def test_brn_valid_hyphenated(self):
         detected = self.detect("KR_BRN", BRN_VALID)

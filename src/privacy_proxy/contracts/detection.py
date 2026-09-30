@@ -24,7 +24,7 @@ class Detection:
     start_idx: int
     end_idx: int
     entity_type: str
-    confidence: int | float | None
+    confidence: float | None
     source: str
     tier: DetectionTier | None
     original_value: str
@@ -38,8 +38,14 @@ class Detection:
                 raise DetectionValidationError(name.upper() + "_REQUIRED")
         if self.source.strip() in ("L3", "L4"):
             raise DetectionValidationError("SOURCE_LAYER_ONLY")
-        if self.confidence is not None and type(self.confidence) not in (int, float):
-            raise DetectionValidationError("CONFIDENCE_TYPE")
+        if self.confidence is not None:
+            try:
+                confidence = float(self.confidence)
+            except (TypeError, ValueError, OverflowError):
+                raise DetectionValidationError("CONFIDENCE_TYPE") from None
+            if not 0.0 <= confidence <= 1.0:
+                raise DetectionValidationError("CONFIDENCE_RANGE")
+            object.__setattr__(self, "confidence", confidence)
         if self.tier is not None and not isinstance(self.tier, DetectionTier):
             raise DetectionValidationError("TIER_VALUE")
         if not isinstance(self.normalized, str):

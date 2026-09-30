@@ -64,6 +64,31 @@ class DetectionTests(unittest.TestCase):
             with self.subTest(key=key), self.assertRaises(DetectionValidationError):
                 Detection(**values)
 
+    def test_confidence_uses_canonical_coercion_and_range(self):
+        for confidence, expected in (
+            (None, None),
+            (0.0, 0.0),
+            (0.5, 0.5),
+            (1.0, 1.0),
+            (0, 0.0),
+            (1, 1.0),
+            (True, 1.0),
+            (False, 0.0),
+            ("0.5", 0.5),
+        ):
+            values = self.values()
+            values["confidence"] = confidence
+            actual = Detection(**values).confidence
+            self.assertEqual(actual, expected)
+            if actual is not None:
+                self.assertIs(type(actual), float)
+
+        for confidence in (-0.1, 1.1, float("nan"), float("inf")):
+            values = self.values()
+            values["confidence"] = confidence
+            with self.subTest(confidence=confidence), self.assertRaises(DetectionValidationError):
+                Detection(**values)
+
     def test_tier_vocabulary(self):
         for tier in [None, *DetectionTier]:
             values = self.values()

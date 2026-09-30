@@ -1,4 +1,4 @@
-"""Regression coverage for all thirteen L3 producer names."""
+"""L5 contract coverage using manually constructed canonical fixtures."""
 
 import pytest
 from pydantic import ValidationError
