@@ -26,9 +26,10 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        # 탐지 계층 extra(torch/spacy)는 CI에서 제외한다. 설치가 수 분 걸리고
-        # 현재 테스트가 의존하지 않는다. 필요해지면 별도 job으로 분리한다.
-        run: uv sync --group dev
+        # training extra: l4/ner/metrics.py가 numpy·seqeval을 쓰고
+        # tests/unit/l4/test_metrics.py가 이를 import한다. torch도 함께 딸려와
+        # 설치가 수 분 걸리지만 setup-uv 캐시가 이후 실행을 덮는다.
+        run: uv sync --group dev --extra training --extra detection
 
       - name: ruff (lint)
         run: uv run ruff check --output-format=github .
