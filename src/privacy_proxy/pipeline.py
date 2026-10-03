@@ -1,4 +1,4 @@
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from l4.recognizers import (
     find_customer_id,
@@ -23,11 +23,14 @@ from upstream.llm_client import call_gemini_l7
 
 from .mock_layers import mock_l6_vault_tokenization
 
+if TYPE_CHECKING:
+    from privacy_proxy.l3.service import L3AnalyzerService
+
 # ── [바뀐 점 1] L3 서비스를 맨 위에서 import하지 않고, 처음 쓸 때 불러오는 함수 ──
-_l3_service = None
+_l3_service: "L3AnalyzerService | None" = None
 
 
-def _get_l3_service():
+def _get_l3_service() -> "L3AnalyzerService":
     global _l3_service
     if _l3_service is None:
         from privacy_proxy.l3.service import L3AnalyzerService
@@ -36,7 +39,7 @@ def _get_l3_service():
     return _l3_service
 
 
-def _to_detected_pii(det, offset_base: int) -> DetectedPII:
+def _to_detected_pii(det: Any, offset_base: int) -> DetectedPII:
     """L3/L4가 돌려준 결과를 공통 형식(DetectedPII)으로 바꾸고,
     세그먼트 기준 위치를 raw_prompt 기준 위치로 옮긴다."""
     if isinstance(det, DetectedPII):

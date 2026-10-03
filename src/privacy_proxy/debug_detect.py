@@ -9,14 +9,14 @@ src_dir = os.path.join(root_dir, "src")
 sys.path.insert(0, root_dir)
 sys.path.insert(0, src_dir)
 
-from l4.recognizers import ( # noqa: E402
+from l4.recognizers import (  # noqa: E402
     find_customer_id,
     find_customs_clearance_id,
     find_order_id,
     find_tracking_number,
 )
 
-from privacy_proxy.pipeline import _get_l3_service, _to_detected_pii # noqa: E402
+from privacy_proxy.pipeline import _get_l3_service, _to_detected_pii  # noqa:E402
 
 TEXT = "안녕하세요 제 번호는 010-9999-8888이고 이메일은 test@example.com입니다."
 
