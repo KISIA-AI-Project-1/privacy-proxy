@@ -42,6 +42,12 @@ def tier_for(
         if not any(r.start == 0 and r.end == len(original_value) for r in matches):
             raise ProvenanceError("EMITTED_EMAIL_PATTERN_NOT_PASS")
         return DetectionTier.RULE_ANCHORED
+    if entity == "AGE":
+        # Exact producer identity is verified above. Its analyze method emits
+        # only after numeric, clause, anchor, semantic and lexical checks.
+        # Context cannot be reconstructed from the surface alone; no score
+        # inference or shared last-request evidence is used here.
+        return DetectionTier.RULE_ANCHORED
     if entity == "KR_PASSPORT":
         return DetectionTier.RULE_ANCHORED
     if entity in ("KR_RRN", "KR_FRN"):
