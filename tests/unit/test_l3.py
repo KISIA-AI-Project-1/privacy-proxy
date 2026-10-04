@@ -29,10 +29,10 @@ from tests.fixtures import (
 
 
 class RegistryTests(unittest.TestCase):
-    def test_exact_seven_unique_and_ko(self):
+    def test_exact_eight_unique_and_ko(self):
         registry = build_registry()
         self.assertEqual(set(validate_registry(registry)), set(SUPPORTED_ENTITIES))
-        self.assertEqual(len(registry.recognizers), 7)
+        self.assertEqual(len(registry.recognizers), 8)
         self.assertEqual(registry.supported_languages, ["ko"])
 
     def test_duplicate_rejected(self):
@@ -171,7 +171,7 @@ class ServiceTests(unittest.TestCase):
         self.service = L3AnalyzerService()
 
     def test_unsupported_entity_and_language(self):
-        for entities in [["LOCATION"], ["KR_BRN", "AGE"], "KR_BRN", [None]]:
+        for entities in [["LOCATION"], ["KR_BRN", "AGE_GROUP"], "KR_BRN", [None]]:
             with self.assertRaises(UnsupportedCapabilityError):
                 self.service.analyze("", "s", entities=entities)
         with self.assertRaises(UnsupportedCapabilityError):

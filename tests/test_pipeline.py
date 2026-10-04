@@ -78,25 +78,26 @@ async def test_l5_failure_prevents_l6_and_l7_calls() -> None:
     }
     mock_user = UserContext(user_id="test-user", role="user", department="Dev")
 
-    async def emit_unsupported_entity(context: ProxyContext) -> ProxyContext:
-        context.detected_entities.append(
+    def emit_unsupported_entity(_text: str) -> list[DetectedPII]:
+        return [
             DetectedPII(
+                segment_id="seg-1",
                 entity_type="UNSUPPORTED_PRIVATE_TYPE",
                 original_value=private_value,
+                normalized=private_value,
                 start_idx=0,
                 end_idx=len(private_value),
                 confidence=1.0,
                 tier=DetectionTier.MODEL,
                 source="INTEGRATION_TEST",
             )
-        )
-        return context
+        ]
 
     l6 = AsyncMock()
     l7 = AsyncMock()
     with (
         patch(
-            "privacy_proxy.pipeline.mock_l4_detection_ecommerce",
+            "privacy_proxy.pipeline.find_customer_id",
             side_effect=emit_unsupported_entity,
         ),
         patch("privacy_proxy.pipeline.mock_l6_vault_tokenization", l6),
