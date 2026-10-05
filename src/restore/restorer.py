@@ -1,52 +1,95 @@
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterable
+from typing import cast
 
 from privacy_proxy.schemas import ProxyContext
 
 
 async def restore_l8(context: ProxyContext) -> ProxyContext:
-    """
-    [L8: 역치환 복원 레이어 (스트리밍 업그레이드)]
-    """
-    if context.status == "failed" or not context.llm_raw_response:
+    """가명화된 응답을 청크 경계를 보존하며 복원한다."""
+    if context.status != "success" or context.llm_raw_response is None:
         return context
 
-    try:
-        mapping = context.vault_mapping
+    # 요청의 복원 매핑을 별도로 보관한다.
+    mapping: dict[str, str] = dict(context.vault_mapping)
 
-        # 글자 수가 긴 가명부터 정렬하여 오치환 방지
-        sorted_fake_keys = sorted(mapping.keys(), key=len, reverse=True) if mapping else []
+    if any(not key for key in mapping):
+        context.status = "failed"
+        context.error = "L8_INVALID_MAPPING"
+        return context
 
-        # 가장 긴 가명화 키워드의 길이 계산
-        max_fake_len = len(sorted_fake_keys[0]) if sorted_fake_keys else 0
+    fake_keys = sorted(mapping, key=len, reverse=True)
 
-        async def _streaming_buffer() -> AsyncGenerator[str, None]:
-            buffer = ""
+    source = cast(
+        AsyncIterable[str],
+        context.llm_raw_response,
+    )
 
-            async for chunk in context.llm_raw_response:
+    def consume_buffer(
+        buffer: str,
+        *,
+        final: bool,
+    ) -> tuple[str, str]:
+        """출력 가능한 부분과 다음 청크까지 보관할 부분을 나눈다."""
+        output: list[str] = []
+        position = 0
+
+        while position < len(buffer):
+            remaining = buffer[position:]
+
+            if not final and any(
+                len(remaining) < len(key) and key.startswith(remaining) for key in fake_keys
+            ):
+                break
+
+            matched_key = next(
+                (key for key in fake_keys if buffer.startswith(key, position)),
+                None,
+            )
+
+            if matched_key is not None:
+                output.append(mapping[matched_key])
+                position += len(matched_key)
+            else:
+                output.append(buffer[position])
+                position += 1
+
+        return "".join(output), buffer[position:]
+
+    async def restored_stream() -> AsyncGenerator[str, None]:
+        buffer = ""
+
+        try:
+            async for chunk in source:
+                if not isinstance(chunk, str):
+                    raise TypeError("unexpected upstream chunk type")
+
+                if not mapping:
+                    if chunk:
+                        yield chunk
+                    continue
+
                 buffer += chunk
+                ready, buffer = consume_buffer(
+                    buffer,
+                    final=False,
+                )
 
-                for fake_pii in sorted_fake_keys:
-                    if fake_pii in buffer:
-                        real_pii = mapping[fake_pii]
-                        buffer = buffer.replace(fake_pii, real_pii)
-
-                # [슬라이딩 윈도우]
-                if len(buffer) > max_fake_len:
-                    safe_chunk = buffer[:-max_fake_len]
-                    yield safe_chunk
-                    buffer = buffer[-max_fake_len:]
+                if ready:
+                    yield ready
 
             if buffer:
-                for fake_pii in sorted_fake_keys:
-                    if fake_pii in buffer:
-                        real_pii = mapping[fake_pii]
-                        buffer = buffer.replace(fake_pii, real_pii)
-                yield buffer
+                ready, _ = consume_buffer(
+                    buffer,
+                    final=True,
+                )
+                if ready:
+                    yield ready
 
-        context.final_response = _streaming_buffer()
+        except Exception:
+            if context.status == "success":
+                context.status = "failed"
+                context.error = "L8_STREAM_FAILED"
+            raise
 
-    except Exception:
-        context.status = "failed"
-        context.error = "L8_RESTORE_FAILED"
-
+    context.final_response = restored_stream()
     return context

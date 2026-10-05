@@ -1,112 +1,235 @@
 from collections.abc import AsyncGenerator
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
-from privacy_proxy.main import app
 from privacy_proxy.pipeline import run_privacy_pipeline
-from privacy_proxy.schemas import DetectedPII, DetectionTier, ProxyContext, UserContext
+from privacy_proxy.schemas import (
+    DetectedPII,
+    DetectionTier,
+    ProxyContext,
+    UserContext,
+)
 
-client = TestClient(app)
+PHONE = "010-9999-8888"
+ORDER = "20261003-123456"
+
+
+class StubL3Service:
+    """무거운 L3 초기화 대신 정해진 전화번호 결과를 반환한다."""
+
+    def analyze(
+        self,
+        raw_prompt: str,
+        segment_id: str,
+    ) -> list[DetectedPII]:
+        if PHONE not in raw_prompt:
+            return []
+
+        start = raw_prompt.index(PHONE)
+
+        return [
+            DetectedPII(
+                segment_id=segment_id,
+                start_idx=start,
+                end_idx=start + len(PHONE),
+                entity_type="PHONE_NUMBER",
+                confidence=None,
+                source="TEST_L3",
+                tier=DetectionTier.RULE_ANCHORED,
+                original_value=PHONE,
+                normalized=PHONE,
+            )
+        ]
 
 
 def test_healthz() -> None:
-    """헬스체크 엔드포인트 정상 작동 검증"""
-    response = client.get("/healthz")
+    """외부 AWS 호출 없이 헬스체크를 검증한다."""
+    # main.py의 전역 S3 클라이언트 생성을 테스트에서 대체한다.
+    with patch("boto3.client"):
+        from privacy_proxy.main import app
+
+        with TestClient(app) as client:
+            response = client.get("/healthz")
+
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
 
 
 @pytest.mark.asyncio
 async def test_full_pipeline_success() -> None:
-    """L1부터 L9까지 정상 흐름(개인정보 탐지 -> 가명화 -> LLM 통신 -> 복원 -> 로그) 검증"""
+    """가명화된 요청과 스트림 복원·감사 기록까지 검증한다."""
+    original_text = f"연락처: {PHONE}. 주문번호: {ORDER}."
+
     raw_input = {
         "model": "gpt-4o-mini",
         "messages": [
             {
                 "role": "user",
-                "content": "안녕하세요 제 번호는 010-9999-8888이고 이메일은 test@example.com입니다.",
+                "content": original_text,
             }
         ],
     }
-    mock_user = UserContext(user_id="test-user", role="user", department="Dev")
+    mock_user = UserContext(
+        user_id="test-user",
+        role="user",
+        department="Dev",
+    )
 
-    # 1. 구글 서버 대신 일해줄 가짜 함수 정의
     async def mock_call_llm(context: ProxyContext) -> ProxyContext:
+        anonymized_text = context.anonymized_prompt
+        assert anonymized_text is not None
+
+        # L7에 전달되는 요청에는 원문 개인정보가 없어야 한다.
+        assert PHONE not in anonymized_text
+        assert ORDER not in anonymized_text
+        assert context.reconstructed_body["messages"][0]["content"] == anonymized_text
+        assert set(context.token_types.values()) == {
+            "PHONE_NUMBER",
+            "ORDER_ID",
+        }
+
         async def mock_stream() -> AsyncGenerator[str, None]:
             yield "응답: "
-            yield context.anonymized_prompt or ""
+
+            # 토큰이 청크 경계에서 잘려도 복원되어야 한다.
+            for character in anonymized_text:
+                yield character
+
             yield " (테스트 완료)"
 
         context.llm_raw_response = mock_stream()
         return context
 
-    # 2. call_gemini_l7을 가짜 함수로 가로채기(patch)한 상태에서 파이프라인 실행
-    with patch("privacy_proxy.pipeline.call_gemini_l7", side_effect=mock_call_llm):
-        context = await run_privacy_pipeline(raw_input, user=mock_user)
+    with (
+        patch(
+            "privacy_proxy.pipeline._get_l3_service",
+            return_value=StubL3Service(),
+        ),
+        patch(
+            "privacy_proxy.pipeline.call_gemini_l7",
+            new=mock_call_llm,
+        ),
+    ):
+        context = await run_privacy_pipeline(
+            raw_input,
+            user=mock_user,
+        )
 
-    # 에러출력
-    if context.status != "success":
-        print(f"\n[CI 에러 원인 확인] error: {context.error}\n")
+        assert context.status == "success", context.error
+        assert context.error is None
+        assert context.policy_action == "TOKENIZE"
+        assert context.vault_mapping
+        assert context.final_response is not None
 
-    # 3. 파이프라인 상태 검증
+        # 스트림을 읽어야 L8 복원과 L9 완료 기록이 실행된다.
+        chunks: list[str] = []
+        async for chunk in context.final_response:
+            chunks.append(chunk)
+
+    restored_text = "".join(chunks)
+
+    assert restored_text == f"응답: {original_text} (테스트 완료)"
     assert context.status == "success"
     assert context.error is None
-    assert context.vault_mapping is not None
-    assert len(context.vault_mapping) > 0
-    assert context.final_response is not None
+    assert "total_pipeline" in context.latency_ms
 
 
 @pytest.mark.asyncio
 async def test_pipeline_with_empty_input() -> None:
-    """빈 문자열이나 잘못된 입력이 들어왔을 때의 방어 로직 검증"""
-    mock_user = UserContext(user_id="test-user", role="user", department="Dev")
-    context = await run_privacy_pipeline("", user=mock_user)
+    """빈 입력은 실패 처리하고 L6·L7을 실행하지 않는다."""
+    mock_user = UserContext(
+        user_id="test-user",
+        role="user",
+        department="Dev",
+    )
 
-    # 빈 값이어도 시스템이 터지지 않고 상태를 유지하는지 확인
-    assert context is not None
+    l6_factory = Mock()
+    l7 = AsyncMock()
+
+    with (
+        patch(
+            "privacy_proxy.pipeline._get_l6_tokenizer",
+            l6_factory,
+        ),
+        patch(
+            "privacy_proxy.pipeline.call_gemini_l7",
+            l7,
+        ),
+    ):
+        context = await run_privacy_pipeline(
+            "",
+            user=mock_user,
+        )
+
+    assert context.status == "failed"
+    assert context.error == "L2_PARSING_FAILED"
+    l6_factory.assert_not_called()
+    l7.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_l5_failure_prevents_l6_and_l7_calls() -> None:
-    """A failed L5 boundary must not tokenize or send the request upstream."""
+    """L5가 거절한 요청은 가명화와 외부 전송을 진행하지 않는다."""
     private_value = "private-person@example.com"
+
     raw_input = {
         "model": "gpt-4o-mini",
-        "messages": [{"role": "user", "content": private_value}],
+        "messages": [
+            {
+                "role": "user",
+                "content": private_value,
+            }
+        ],
     }
-    mock_user = UserContext(user_id="test-user", role="user", department="Dev")
+    mock_user = UserContext(
+        user_id="test-user",
+        role="user",
+        department="Dev",
+    )
 
-    def emit_unsupported_entity(_text: str) -> list[DetectedPII]:
-        return [
-            DetectedPII(
-                segment_id="seg-1",
-                entity_type="UNSUPPORTED_PRIVATE_TYPE",
-                original_value=private_value,
-                normalized=private_value,
-                start_idx=0,
-                end_idx=len(private_value),
-                confidence=1.0,
-                tier=DetectionTier.MODEL,
-                source="INTEGRATION_TEST",
-            )
-        ]
+    # L4가 L5에서 지원하지 않는 엔티티를 반환하는 상황을 만든다.
+    unsupported_entity = DetectedPII(
+        segment_id="seg-1",
+        entity_type="UNSUPPORTED_PRIVATE_TYPE",
+        original_value=private_value,
+        start_idx=0,
+        end_idx=len(private_value),
+        confidence=1.0,
+        tier=DetectionTier.MODEL,
+        source="INTEGRATION_TEST",
+        normalized=private_value,
+    )
 
-    l6 = AsyncMock()
+    l6_factory = Mock()
     l7 = AsyncMock()
+
     with (
         patch(
-            "privacy_proxy.pipeline.find_customer_id",
-            side_effect=emit_unsupported_entity,
+            "privacy_proxy.pipeline._get_l3_service",
+            return_value=StubL3Service(),
         ),
-        patch("privacy_proxy.pipeline.mock_l6_vault_tokenization", l6),
-        patch("privacy_proxy.pipeline.call_gemini_l7", l7),
+        patch(
+            "privacy_proxy.pipeline.find_customer_id",
+            return_value=[unsupported_entity],
+        ),
+        patch(
+            "privacy_proxy.pipeline._get_l6_tokenizer",
+            l6_factory,
+        ),
+        patch(
+            "privacy_proxy.pipeline.call_gemini_l7",
+            l7,
+        ),
     ):
-        context = await run_privacy_pipeline(raw_input, user=mock_user)
+        context = await run_privacy_pipeline(
+            raw_input,
+            user=mock_user,
+        )
 
     assert context.status == "failed"
     assert context.error == "L5_VALIDATION_FAILED"
     assert private_value not in context.error
-    l6.assert_not_awaited()
+    l6_factory.assert_not_called()
     l7.assert_not_awaited()
