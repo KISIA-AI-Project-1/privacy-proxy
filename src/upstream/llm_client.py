@@ -1,51 +1,94 @@
+import copy
 import json
 import os
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterable
 from typing import Any
 
 import httpx
 
 from privacy_proxy.schemas import ProxyContext
 
-# 환경변수에서 벤더별 API 키 로드
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY", "")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-
 PRIVACY_SYSTEM_SKILL = """
-# System Skill: Contextual Consistency with Pseudonymized Data
-당신은 개인정보 보호 프록시(Privacy Proxy)를 거쳐 사용자와 소통하는 AI 어시스턴트입니다.
-사용자의 입력 데이터는 프라이버시 보호를 위해 가짜 개인정보(예: 홍길동, 010-123-456 등)로 대체(가명화)되어 전달됩니다.
+당신은 개인정보 가명화 프록시를 거쳐 사용자와 소통하는 AI입니다.
 
-## (절대 규칙)
-- 입력된 텍스트에 포함된 가짜 이름, 전화번호, 이메일 등의 가명화된 정보는 시스템에서 임의로 치환된 것입니다.
-- 답변을 생성할 때, 사용자가 보낸 가짜 정보(예: 홍길동님)를 그대로 인용하거나 자연스럽게 사용하여 문맥의 일관성을 유지하십시오.
-- 실제 개인정보를 유추하거나 원래의 진짜 정보가 무엇인지 언급하거나 되묻지 마십시오.
-- 오직 전달받은 텍스트의 맥락 안에서만 안전하게 응답하십시오.
+입력에 포함된 가명과 토큰(예: 【PHONE_1】, 【EMAIL_1】, 홍길동)은
+프록시에서 원래 개인정보 대신 넣은 값입니다.
+
+- 답변에서 해당 정보를 인용할 때 가명과 토큰을 정확히 유지하세요.
+- 토큰의 괄호, 이름, 숫자를 변경하거나 번역하지 마세요.
+- 원래 개인정보를 추측하거나 복구하려 하지 마세요.
 """
 
 
+async def _guard_l7_stream(
+    context: ProxyContext,
+    source: AsyncIterable[str],
+) -> AsyncGenerator[str, None]:
+    """실제 요청·응답 스트리밍 중 발생하는 오류를 기록한다."""
+    try:
+        async for chunk in source:
+            yield chunk
+    except Exception:
+        context.status = "failed"
+        context.error = "L7_STREAM_FAILED"
+        raise
+
+
 async def call_gemini_l7(context: ProxyContext) -> ProxyContext:
-    """
-    [L7: LLM 중계 레이어]
-    """
-    if context.status != "success" or not context.parsed_request:
+    """가명화된 요청을 벤더별 응답 스트림에 연결한다."""
+    if context.status != "success":
         return context
 
-    vendor = context.parsed_request.vendor
-    body = context.reconstructed_body
+    if context.parsed_request is None:
+        context.status = "failed"
+        context.error = "L7_PARSED_REQUEST_MISSING"
+        return context
 
-    _inject_system_prompt(vendor, body)
+    if not context.reconstructed_body:
+        context.status = "failed"
+        context.error = "L7_RECONSTRUCTED_BODY_MISSING"
+        return context
 
     try:
+        vendor = context.parsed_request.vendor
+        body = copy.deepcopy(context.reconstructed_body)
+
+        # L2에서 사용한 모델을 실제 요청에도 명시한다.
+        body["model"] = context.parsed_request.model
+
+        key_names = {
+            "openai": "OPENAI_API_KEY",
+            "anthropic": "CLAUDE_API_KEY",
+            "gemini": "GEMINI_API_KEY",
+        }
+
+        key_name = key_names.get(vendor)
+        if key_name is None:
+            context.status = "failed"
+            context.error = "L7_UNSUPPORTED_VENDOR"
+            return context
+
+        api_key = os.getenv(key_name, "").strip()
+        if not api_key:
+            context.status = "failed"
+            context.error = "L7_API_KEY_MISSING"
+            return context
+
+        _inject_system_prompt(vendor, body)
+
+        source: AsyncIterable[str]
+
         if vendor == "openai":
-            context.llm_raw_response = _stream_openai(body)
+            source = _stream_openai(body, api_key)
         elif vendor == "anthropic":
-            context.llm_raw_response = _stream_claude(body)
-        elif vendor == "gemini":
-            context.llm_raw_response = _stream_gemini(body)
+            source = _stream_claude(body, api_key)
         else:
-            raise ValueError("unsupported upstream vendor")
+            source = _stream_gemini(body, api_key)
+
+        context.llm_raw_response = _guard_l7_stream(
+            context,
+            source,
+        )
 
     except Exception:
         context.status = "failed"
@@ -54,27 +97,105 @@ async def call_gemini_l7(context: ProxyContext) -> ProxyContext:
     return context
 
 
-def _inject_system_prompt(vendor: str, body: dict[str, Any]) -> None:
+def _inject_system_prompt(
+    vendor: str,
+    body: dict[str, Any],
+) -> None:
+    """기존 지시를 유지하면서 프록시 지시를 추가한다."""
     if vendor == "openai":
-        messages = body.setdefault("messages", [])
-        if not any(msg.get("role") == "system" for msg in messages):
-            messages.insert(0, {"role": "system", "content": PRIVACY_SYSTEM_SKILL})
+        messages = body.get("messages")
+        if not isinstance(messages, list):
+            raise ValueError("messages must be a list")
+
+        messages.insert(
+            0,
+            {
+                "role": "system",
+                "content": PRIVACY_SYSTEM_SKILL,
+            },
+        )
 
     elif vendor == "anthropic":
-        if "system" not in body:
+        existing = body.get("system")
+
+        if existing is None:
             body["system"] = PRIVACY_SYSTEM_SKILL
+        elif isinstance(existing, str):
+            body["system"] = PRIVACY_SYSTEM_SKILL + "\n\n" + existing
+        elif isinstance(existing, list):
+            body["system"] = [
+                {
+                    "type": "text",
+                    "text": PRIVACY_SYSTEM_SKILL,
+                },
+                *existing,
+            ]
+        else:
+            raise ValueError("unsupported system format")
 
     elif vendor == "gemini":
-        if "systemInstruction" not in body:
+        existing = body.get("systemInstruction")
+
+        if existing is None:
             body["systemInstruction"] = {
-                "role": "system",
                 "parts": [{"text": PRIVACY_SYSTEM_SKILL}],
             }
+        elif isinstance(existing, dict):
+            parts = existing.get("parts", [])
+            if not isinstance(parts, list):
+                raise ValueError("system parts must be a list")
+
+            existing["parts"] = [
+                {"text": PRIVACY_SYSTEM_SKILL},
+                *parts,
+            ]
+        else:
+            raise ValueError("unsupported system instruction")
 
 
-async def _stream_openai(body: dict[str, Any]) -> AsyncGenerator[str, None]:
+async def _iter_sse_data(
+    response: httpx.Response,
+) -> AsyncGenerator[str, None]:
+    """SSE 이벤트의 data 줄을 모아 반환한다."""
+    data_lines: list[str] = []
+
+    async for line in response.aiter_lines():
+        if line == "":
+            if data_lines:
+                yield "\n".join(data_lines)
+                data_lines.clear()
+            continue
+
+        if line.startswith("data:"):
+            value = line[5:]
+            if value.startswith(" "):
+                value = value[1:]
+            data_lines.append(value)
+
+    if data_lines:
+        yield "\n".join(data_lines)
+
+
+def _decode_event(data: str) -> dict[str, Any]:
+    """응답 이벤트를 해석하고 벤더 오류를 확인한다."""
+    event = json.loads(data)
+
+    if not isinstance(event, dict):
+        raise ValueError("unexpected upstream event")
+
+    if "error" in event or event.get("type") == "error":
+        raise RuntimeError("upstream error event")
+
+    return event
+
+
+async def _stream_openai(
+    body: dict[str, Any],
+    api_key: str,
+) -> AsyncGenerator[str, None]:
+    """OpenAI 응답에서 텍스트 청크를 읽는다."""
     headers = {
-        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
     body["stream"] = True
@@ -90,26 +211,31 @@ async def _stream_openai(body: dict[str, Any]) -> AsyncGenerator[str, None]:
     ):
         response.raise_for_status()
 
-        async for line in response.aiter_lines():
-            if line.startswith("data: "):
-                data_str = line[6:].strip()
-                if data_str == "[DONE]":
-                    break
-                try:
-                    data_json = json.loads(data_str)
-                    chunk = data_json["choices"][0]["delta"].get("content", "")
-                    if chunk:
-                        yield chunk
-                except json.JSONDecodeError:
-                    continue
+        async for data in _iter_sse_data(response):
+            if data.strip() == "[DONE]":
+                break
+
+            event = _decode_event(data)
+            choices = event.get("choices", [])
+
+            # 사용량 알림 등 텍스트가 없는 이벤트는 건너뛴다.
+            if not choices:
+                continue
+
+            delta = choices[0].get("delta", {})
+            text = delta.get("content")
+
+            if isinstance(text, str) and text:
+                yield text
 
 
-async def _stream_claude(body: dict[str, Any]) -> AsyncGenerator[str, None]:
-    """
-    [Claude API 전용 스트리밍 어댑터]
-    """
+async def _stream_claude(
+    body: dict[str, Any],
+    api_key: str,
+) -> AsyncGenerator[str, None]:
+    """Claude 응답에서 텍스트 청크를 읽는다."""
     headers = {
-        "x-api-key": CLAUDE_API_KEY,
+        "x-api-key": api_key,
         "anthropic-version": "2023-06-01",
         "Content-Type": "application/json",
     }
@@ -126,46 +252,62 @@ async def _stream_claude(body: dict[str, Any]) -> AsyncGenerator[str, None]:
     ):
         response.raise_for_status()
 
-        async for line in response.aiter_lines():
-            if line.startswith("data: "):
-                data_str = line[6:].strip()
-                try:
-                    data_json = json.loads(data_str)
-                    if data_json.get("type") == "content_block_delta":
-                        chunk = data_json["delta"].get("text", "")
-                        if chunk:
-                            yield chunk
-                except json.JSONDecodeError:
-                    continue
+        async for data in _iter_sse_data(response):
+            event = _decode_event(data)
+            event_type = event.get("type")
+
+            if event_type == "message_stop":
+                break
+
+            if event_type == "content_block_delta":
+                delta = event.get("delta", {})
+                text = delta.get("text")
+
+                if isinstance(text, str) and text:
+                    yield text
 
 
-async def _stream_gemini(body: dict[str, Any]) -> AsyncGenerator[str, None]:
-    """
-    [Gemini API 전용 스트리밍 어댑터]
-    """
-    model_name = body.get("model", "gemini-1.5-pro")
+async def _stream_gemini(
+    body: dict[str, Any],
+    api_key: str,
+) -> AsyncGenerator[str, None]:
+    """Gemini 응답에서 텍스트 청크를 읽는다."""
+    # 모델은 URL에 지정하고 요청 본문에서는 제거한다.
+    model = body.pop("model")
+    if not isinstance(model, str) or not model:
+        raise ValueError("model is required")
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:streamGenerateContent?alt=sse&key={GEMINI_API_KEY}"
+    if model.startswith("models/"):
+        model = model[len("models/") :]
+
+    body.pop("stream", None)
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent"
 
     async with (
         httpx.AsyncClient(timeout=30.0) as client,
         client.stream(
             "POST",
             url,
-            headers={"Content-Type": "application/json"},
+            params={"alt": "sse"},
+            headers={
+                "Content-Type": "application/json",
+                "x-goog-api-key": api_key,
+            },
             json=body,
         ) as response,
     ):
         response.raise_for_status()
 
-        async for line in response.aiter_lines():
-            if line.startswith("data: "):
-                data_str = line[6:].strip()
-                try:
-                    data_json = json.loads(data_str)
-                    chunk = data_json["candidates"][0]["content"]["parts"][0].get("text", "")
-                    if chunk:
-                        yield chunk
+        async for data in _iter_sse_data(response):
+            event = _decode_event(data)
+            candidates = event.get("candidates", [])
 
-                except (json.JSONDecodeError, KeyError, IndexError):
-                    continue
+            if not candidates:
+                continue
+
+            content = candidates[0].get("content", {})
+            for part in content.get("parts", []):
+                text = part.get("text")
+                if isinstance(text, str) and text:
+                    yield text

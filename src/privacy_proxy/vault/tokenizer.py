@@ -304,7 +304,7 @@ class Tokenizer:
             entities,
             key=lambda e: (
                 -(e.end_idx - e.start_idx),
-                -float(getattr(e, "confidence", 0.0)),
+                -float(e.confidence if e.confidence is not None else 0.0),
                 e.start_idx,
             ),
         )
