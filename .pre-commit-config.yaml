@@ -36,6 +36,7 @@ repos:
           - pydantic
           - pydantic-settings
           - types-redis
+          - types-PyYAML
           - fastapi
           - httpx
           - presidio-analyzer>=2.2
