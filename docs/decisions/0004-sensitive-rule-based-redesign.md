@@ -36,6 +36,7 @@
   강한 단서(정기배송·재구매 등)가 있으면 주기 표현("3개월 주기", 매달 등)은 그 수식어로 보고 버림. 없으면 약한 단서를 각각 방출.
 - **겹침**: PRODUCT_ITEM 스팬과 겹치는 2번 스팬(SENSITIVE_HEALTH/SENSITIVE_SEX_LIFE)은 유지하고, 겹치는 PRODUCT_ITEM을 제거함(2번 우선). 단서 방출 판정은 겹침 정리 후 남은 PRODUCT_ITEM 기준이라 상품이 없으면 단서도 폐기됨.
   예: "당뇨 영양제 먹고 있어요 주문"은 SENSITIVE_HEALTH만 남음.
+  문장에 2번 서술 프레임이 있으면 같은 질병어는 모두 2번으로 처리하고 겹치는 PRODUCT_ITEM은 제거함. 예: "당뇨 있어서 당뇨약 주문"은 SENSITIVE_HEALTH 2개(`당뇨`, `당뇨약` 안의 `당뇨`)만 남고 PRODUCT_ITEM은 없음.
 - 출력: `tier=RULE_ANCHORED`, `source=L4_SENSITIVE_<TYPE>`, confidence는 `has_anchor`/`score` 재사용(상품은 구매 맥락어까지 거리, 단서는 가장 가까운 상품까지 거리).
   등급·반복 점수·link_id는 `DetectedPII`에 없고 L4가 계산하지 않음. 판정은 L5.
 
