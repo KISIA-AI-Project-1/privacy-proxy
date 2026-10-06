@@ -19,6 +19,7 @@ import yaml
 from l4.recognizers.context import has_anchor, score
 from l4.sensitive.health.guards import GUARDS as _HEALTH_GUARDS
 from l4.sensitive.sex_life.guards import GUARDS as _SEX_LIFE_GUARDS
+from l4.text_normalize import normalize_for_match
 from privacy_proxy.schemas import DetectedPII, DetectionTier, EntityType
 
 _BASE_SCORE = 0.6
@@ -78,7 +79,7 @@ def _squash(text: str, base: int = 0) -> tuple[str, list[int]]:
     """공백 제거 + 소문자. 반환 문자열 각 글자의 원문 인덱스를 함께 돌려준다."""
     chars: list[str] = []
     idx: list[int] = []
-    for i, ch in enumerate(text):
+    for i, ch in enumerate(normalize_for_match(text)):
         if ch.isspace():
             continue
         for c in ch.lower():
