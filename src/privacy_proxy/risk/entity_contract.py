@@ -52,14 +52,20 @@ L4_RECOGNIZER_ENTITY_TYPES = frozenset(
 L4_SENSITIVE_ENTITY_TYPES = frozenset(
     {
         EntityType.SENSITIVE_HEALTH.value,
-        EntityType.SENSITIVE_RELIGION.value,
-        EntityType.SENSITIVE_FAMILY.value,
-        EntityType.SENSITIVE_FINANCIAL.value,
+        EntityType.SENSITIVE_SEX_LIFE.value,
     }
 )
 
+L4_COMMERCE_ENTITY_TYPES = frozenset(
+    {EntityType.PRODUCT_ITEM.value, EntityType.PURCHASE_PATTERN.value}
+)
+
 L5_SUPPORTED_ENTITY_TYPES = frozenset(
-    L3_ENTITY_TYPES | L4_NER_ENTITY_TYPES | L4_RECOGNIZER_ENTITY_TYPES | L4_SENSITIVE_ENTITY_TYPES
+    L3_ENTITY_TYPES
+    | L4_NER_ENTITY_TYPES
+    | L4_RECOGNIZER_ENTITY_TYPES
+    | L4_SENSITIVE_ENTITY_TYPES
+    | L4_COMMERCE_ENTITY_TYPES
 )
 SCHEMA_ENTITY_TYPES = frozenset(entity_type.value for entity_type in EntityType)
 
@@ -68,4 +74,5 @@ ENTITY_STATUS: dict[str, EntityStatus] = {
     **dict.fromkeys(L4_RECOGNIZER_ENTITY_TYPES, EntityStatus.EMITTED),
     **dict.fromkeys(L4_NER_ENTITY_TYPES, EntityStatus.ADAPTER_PENDING),
     **dict.fromkeys(L4_SENSITIVE_ENTITY_TYPES, EntityStatus.IMPLEMENTATION_PENDING),
+    **dict.fromkeys(L4_COMMERCE_ENTITY_TYPES, EntityStatus.IMPLEMENTATION_PENDING),
 }
