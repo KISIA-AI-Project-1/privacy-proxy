@@ -66,6 +66,10 @@ _FRAMES: dict[str, tuple[tuple[str, ...], int]] = {
 # 용어 바로 뒤에 붙는 광고 문구 — 복용 프레임이 같이 있어야 양성
 _AD_MARKERS = ("에좋", "에도움", "에효과", "예방", "개선", "케어")
 
+# 용어 앞 숫자형 접두("2형", "제2형", "타입2")와 뒤 병/증 접미는 스팬에 포함(조사는 제외)
+_PREFIX = r"(?:제?\d형|타입\d)?"
+_SUFFIX = r"(?:[병증](?!원))?"
+
 _DIR = Path(__file__).parent
 _BOUNDARY = re.compile(r"(?<![.\d])\.(?![.\d])|[!?。\n]")  # 소수점·말줄임표는 경계 아님
 
@@ -90,7 +94,8 @@ class _Category:
         self.guards = guards
         self.frames = {_squash(e["term"])[0]: e.get("frame", "state") for e in entries}
         terms = sorted(self.frames, key=len, reverse=True)  # 같은 시작이면 긴 용어 우선
-        self.pattern = re.compile("|".join(map(re.escape, terms)))
+        alt = "|".join(map(re.escape, terms))
+        self.pattern = re.compile(rf"{_PREFIX}(?P<t>{alt}){_SUFFIX}")
 
 
 _CATEGORIES = (
@@ -119,7 +124,7 @@ def _scan(text: str, cat: _Category) -> list[tuple[int, int, float]]:
                 for g in re.finditer(re.escape(guard), sq)
             ):
                 continue
-            frame = cat.frames[m.group()]
+            frame = cat.frames[m.group("t")]
             if frame == "state" and any(sq.startswith(k, b) for k in _AD_MARKERS):
                 frame = "consume"
             anchors, window = _FRAMES[frame]
