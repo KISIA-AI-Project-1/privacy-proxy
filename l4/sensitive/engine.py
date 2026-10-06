@@ -5,7 +5,7 @@
 좌표로 되돌린다. 프레임 거리는 ``recognizers/context.py`` 의 ``has_anchor``/
 ``score`` 를 그대로 쓴다.
 
-구매 프레임("탈모 샴푸 정기배송")은 방출하지 않고 버린다.
+구매 프레임("탈모 샴푸 정기배송")은 여기서 방출하지 않는다(``purchase.py`` 몫).
 """
 
 from __future__ import annotations
@@ -124,8 +124,8 @@ def _scan(text: str, cat: _Category) -> list[tuple[int, int, float]]:
     return hits
 
 
-def find_sensitive(text: str, segment_id: str = "seg-1") -> list[DetectedPII]:
-    """건강·성생활 본인 상태 진술. 겹치는 span은 합치고, 카테고리가 갈리면 건강."""
+def find_state(text: str, segment_id: str = "seg-1") -> list[DetectedPII]:
+    """건강·성생활 본인 상태 진술(2번). 겹치는 span은 합치고, 카테고리가 갈리면 건강."""
     hits = sorted(
         (a, b, cat.entity_type, conf) for cat in _CATEGORIES for a, b, conf in _scan(text, cat)
     )
