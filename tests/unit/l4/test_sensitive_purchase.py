@@ -49,6 +49,10 @@ def test_golden_coordinates(text: str, expected: list[tuple[str, str, int, int]]
 
 
 POSITIVE = [
+    # 약 자체가 용어인 복합어는 전체가 한 스팬
+    ("사후피임약 주문했어요", [(ITEM, "사후피임약")]),
+    ("피임약 주문했어요", [(ITEM, "피임약")]),
+    ("아토피 피부염 크림 주문했어요", [(ITEM, "아토피 피부염 크림")]),
     # 띄어쓰기·표기 변형
     ("탈 모 치료제 주문했어요", [(ITEM, "탈 모 치료제")]),
     ("탈모 치료제 샀어요", [(ITEM, "탈모 치료제")]),

@@ -61,8 +61,11 @@ def _terms(keep: set[str] | None, drop: set[str]) -> list[str]:
 
 _DISEASE = _alt(_terms(None, {"doc", "use"}))
 _STANDALONE = _alt(_terms({"use"}, set()))
+_DRUG = _alt(
+    [t for t in _terms(None, {"doc", "use"}) if t.endswith("약")]
+)  # 사후피임약 등 약 자체가 용어
 _PRODUCT = re.compile(
-    rf"(?:{_DISEASE})(?:{_alt(_MODIFIERS)}){{0,2}}(?:{_alt(_PRODUCT_TYPES)})(?![속간])"
+    rf"(?:{_DRUG})|(?:{_DISEASE})(?:{_alt(_MODIFIERS)}){{0,2}}(?:{_alt(_PRODUCT_TYPES)})(?![속간])"
     rf"|{_STANDALONE}"
 )
 _STRONG_RE = re.compile(_alt(_STRONG, escape=False))
