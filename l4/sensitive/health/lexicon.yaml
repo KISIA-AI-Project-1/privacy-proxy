@@ -47,3 +47,7 @@
 - {term: 처방전, frame: doc}
 - {term: 진단서, frame: doc}
 - {term: 소견서, frame: doc}
+- {term: 사후피임약}
+- {term: 응급피임약}
+- {term: 피임약}
+- {term: 피임기구}

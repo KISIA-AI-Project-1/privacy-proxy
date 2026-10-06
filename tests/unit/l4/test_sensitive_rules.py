@@ -38,6 +38,10 @@ POSITIVE = [
     ("조루 있어요", "조루", S),
     ("콘돔 사용 중이에요", "콘돔", S),
     ("임신테스트기 사용했는데", "임신테스트기", S),
+    # 사건·복용 프레임
+    ("사후피임약 먹었는데 생리가 늦어져요", "사후피임약", H),
+    ("콘돔이 찢어져서 피임에 실패했습니다", "콘돔", S),
+    ("딜도 사용했어요", "딜도", S),
     # 문장 경계: 소수점·말줄임표는 끊지 않음
     ("당뇨 수치 3.5 있어요", "당뇨", H),
     ("당뇨... 있어요", "당뇨", H),
@@ -63,6 +67,21 @@ NEGATIVE = [
     "당뇨 있어요",  # 아래 케이스의 대조군이라 양성이어야 함 → 제외 처리됨
 ]
 NEGATIVE.pop()
+# 설명형·명사형("복용 방법", "먹는 법")은 본인 행위 서술이 아님
+NEGATIVE += [
+    "사후피임약 복용 방법 알려주세요",
+    "피임 방법 알려주세요",
+    "사후피임약 가격 알려줘",
+    "당뇨 환자도 먹고 싶은 음식",
+    "혈압약 먹는 법 알려줘",
+    "고혈압약 먹는 법 알려줘",
+    "스테로이드 연고 바르는 순서",
+    "탈모 크림 바르는 순서",
+    "인슐린 맞는 법",
+    "피임약 먹는 시간",
+    "사후피임약 복용법",
+    "고혈압약 복용 시 주의사항",
+]
 # 경계 케이스: 마침표·줄바꿈이 용어와 프레임을 가른다
 NEGATIVE += [
     "당뇨에 대해 알려줘. 저는 잘 있어요",
@@ -87,6 +106,21 @@ def test_positive(text: str, value: str, entity_type: EntityType) -> None:
 @pytest.mark.parametrize("text", NEGATIVE)
 def test_negative_no_false_positive(text: str) -> None:
     assert find_sensitive(text) == []
+
+
+def test_event_sentence_multiple_spans() -> None:
+    text = (
+        "얼마 전 피임기구(콘돔)가 찢어져서 피임 실패를 했는데 사후피임약 복용 골든타임이 궁금합니다"
+    )
+    found = find_sensitive(text)
+    assert [(r.original_value, r.entity_type) for r in found] == [
+        ("피임기구", H),
+        ("콘돔", S),
+        ("피임", H),
+        ("사후피임약", H),
+    ]
+    for r in found:
+        assert text[r.start_idx : r.end_idx] == r.original_value
 
 
 def test_coordinates_in_multi_sentence_text() -> None:
