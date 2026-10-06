@@ -75,3 +75,25 @@ async def test_prefailed_context_is_not_evaluated() -> None:
     assert result is context
     assert result.error == "L4_FAILED"
     assert "L5" not in result.latency_ms
+
+
+@pytest.mark.parametrize("kind", ["SENSITIVE_RELIGION", "SENSITIVE_FAMILY", "SENSITIVE_FINANCIAL"])
+async def test_removed_sensitive_types_stop_l5(kind: str) -> None:
+    result = await run_l5_risk_scoring(
+        ProxyContext(raw_prompt="테스트", detected_entities=[detection(kind, "테스트")])
+    )
+    assert result.status == "failed"
+    assert result.error == "L5_VALIDATION_FAILED"
+    assert result.policy_action is None
+
+
+async def test_commerce_combination_runs_real_l5() -> None:
+    result = await run_l5_risk_scoring(
+        ProxyContext(
+            raw_prompt="30세 머그컵",
+            detected_entities=[detection("AGE", "30세"), detection("PRODUCT_ITEM", "머그컵", 4)],
+        )
+    )
+    assert result.status == "success"
+    assert result.risk_score == 33
+    assert result.policy_action == "GENERALIZE"

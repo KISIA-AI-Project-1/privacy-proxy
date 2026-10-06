@@ -75,6 +75,9 @@ def test_null_roundtrip() -> None:
         ("ORDER_ID", 85, "TOKENIZE"),
         ("LOCATION_INFORMAL", 5, "ALLOW"),
         ("SENSITIVE_HEALTH", 80, "TOKENIZE"),
+        ("SENSITIVE_SEX_LIFE", 80, "TOKENIZE"),
+        ("PRODUCT_ITEM", 5, "ALLOW"),
+        ("PURCHASE_PATTERN", 12, "ALLOW"),
     ],
 )
 async def test_null_score_runs_real_stage(kind: str, score: float, action: str) -> None:
@@ -84,7 +87,7 @@ async def test_null_score_runs_real_stage(kind: str, score: float, action: str) 
     assert result.status == "success"
     assert result.risk_score == score
     assert result.policy_action == action
-    if kind == "SENSITIVE_HEALTH":
+    if kind in {"SENSITIVE_HEALTH", "SENSITIVE_SEX_LIFE"}:
         assert "미산정" in " ".join(result.risk_reasons)
 
 

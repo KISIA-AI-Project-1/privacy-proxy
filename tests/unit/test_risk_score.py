@@ -150,9 +150,9 @@ def test_service_identifier_has_priority() -> None:
         ("CUSTOMS_CLEARANCE_ID", PrivacyClass.SERVICE),
         ("CUSTOMER_ID", PrivacyClass.SERVICE),
         ("SENSITIVE_HEALTH", PrivacyClass.SENSITIVE),
-        ("SENSITIVE_RELIGION", PrivacyClass.SENSITIVE),
-        ("SENSITIVE_FAMILY", PrivacyClass.SENSITIVE),
-        ("SENSITIVE_FINANCIAL", PrivacyClass.SENSITIVE),
+        ("SENSITIVE_SEX_LIFE", PrivacyClass.SENSITIVE),
+        ("PRODUCT_ITEM", PrivacyClass.QI),
+        ("PURCHASE_PATTERN", PrivacyClass.QI),
     ],
 )
 def test_confirmed_l4_entity_contract(entity_type: str, expected_class: PrivacyClass) -> None:
@@ -177,14 +177,16 @@ def test_confirmed_l4_entity_contract(entity_type: str, expected_class: PrivacyC
         (1.0, 80.0, "HIGH", "TOKENIZE"),
     ],
 )
+@pytest.mark.parametrize("entity_type", ["SENSITIVE_HEALTH", "SENSITIVE_SEX_LIFE"])
 def test_sensitive_candidate_uses_confidence(
+    entity_type: str,
     confidence: float,
     expected_score: float,
     expected_level: str,
     expected_action: str,
 ) -> None:
     entity = DetectedPII(
-        entity_type="SENSITIVE_HEALTH",
+        entity_type=entity_type,
         original_value="아토피",
         start_idx=0,
         end_idx=3,
@@ -273,3 +275,32 @@ def test_unknown_detected_entity_fails_closed() -> None:
         assess_risk(context)
     assert "UNREGISTERED_PRIVATE_VALUE" not in str(exc_info.value)
     assert "비밀값" not in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "entities,score,action",
+    [
+        ([("PRODUCT_ITEM", "머그컵")], 5, "ALLOW"),
+        ([("PURCHASE_PATTERN", "매주 구매")], 12, "ALLOW"),
+        ([("PRODUCT_ITEM", "머그컵"), ("PRODUCT_ITEM", "접시")], 5, "ALLOW"),
+        ([("PRODUCT_ITEM", "머그컵"), ("PURCHASE_PATTERN", "매주 구매")], 12, "ALLOW"),
+        ([("PURCHASE_PATTERN", "매주 구매"), ("PRODUCT_ITEM", "머그컵")], 12, "ALLOW"),
+        ([("AGE", "30세"), ("PRODUCT_ITEM", "머그컵")], 33, "GENERALIZE"),
+        ([("LOCATION", "강남구"), ("PURCHASE_PATTERN", "매주 구매")], 35, "GENERALIZE"),
+        (
+            [("AGE", "30세"), ("LOCATION", "강남구"), ("PURCHASE_PATTERN", "매주 구매")],
+            59,
+            "GENERALIZE",
+        ),
+        ([("ORDER_ID", "ORD-001"), ("PRODUCT_ITEM", "머그컵")], 85, "TOKENIZE"),
+        ([("SENSITIVE_SEX_LIFE", "민감내용"), ("PRODUCT_ITEM", "머그컵")], 80, "TOKENIZE"),
+    ],
+)
+def test_commerce_policy_and_combination(
+    entities: list[tuple[str, str]], score: float, action: str
+) -> None:
+    text = " / ".join(value for _, value in entities)
+    result = assess_risk(context_for(text, entities))
+    assert result.risk_score == score
+    assert result.policy_action == action
+    assert all(value not in " ".join(result.risk_reasons) for _, value in entities)

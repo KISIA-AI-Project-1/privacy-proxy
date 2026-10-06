@@ -46,3 +46,51 @@ def test_unknown_entity_fails_closed() -> None:
         calculate_weighted_risk([detection("UNKNOWN_ENTITY", "미등록값")])
     assert "UNKNOWN_ENTITY" not in str(exc_info.value)
     assert "미등록값" not in str(exc_info.value)
+
+
+@pytest.mark.parametrize("kind", ["PRODUCT_ITEM", "PURCHASE_PATTERN"])
+def test_commerce_contributes_weight_without_becoming_sensitive(kind: str) -> None:
+    result = calculate_weighted_risk([detection(kind, "테스트")])
+    assert result.score > 0
+    assert result.qi_category_count == 1
+    assert result.action == "ALLOW"
+
+
+def test_commerce_repetition_does_not_inflate_weighted_score() -> None:
+    product = detection("PRODUCT_ITEM", "머그컵")
+    pattern = detection("PURCHASE_PATTERN", "매주 구매")
+    expected = calculate_weighted_risk([pattern])
+    assert calculate_weighted_risk([product, pattern, product, pattern]) == expected
+    assert calculate_weighted_risk([pattern, product]) == expected
+
+
+def test_commerce_combines_with_age_and_location() -> None:
+    result = calculate_weighted_risk(
+        [
+            detection("AGE", "30세"),
+            detection("LOCATION", "강남구"),
+            detection("PRODUCT_ITEM", "머그컵"),
+            detection("PURCHASE_PATTERN", "매주 구매"),
+        ]
+    )
+    assert result.qi_category_count == 3
+    assert result.action == "GENERALIZE"
+
+
+def test_sex_life_keeps_tokenization_priority() -> None:
+    result = calculate_weighted_risk([detection("SENSITIVE_SEX_LIFE", "민감내용", confidence=0)])
+    assert result.score == 0
+    assert result.action == "TOKENIZE"
+
+
+def test_weak_pattern_does_not_erase_stronger_product_evidence() -> None:
+    product = detection("PRODUCT_ITEM", "머그컵")
+    weak_pattern = detection("PURCHASE_PATTERN", "매주 구매", confidence=0)
+    assert calculate_weighted_risk([product, weak_pattern]) == calculate_weighted_risk([product])
+
+
+def test_missing_commerce_confidence_is_not_hidden_by_deduplication() -> None:
+    product = detection("PRODUCT_ITEM", "머그컵").model_copy(update={"confidence": None})
+    pattern = detection("PURCHASE_PATTERN", "매주 구매")
+    with pytest.raises(ValueError, match="requires measured confidence"):
+        calculate_weighted_risk([product, pattern])
