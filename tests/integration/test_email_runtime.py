@@ -40,6 +40,20 @@ class EmailIntegrationTests(unittest.TestCase):
         out = (service or self.service).analyze(text, "seg-email", entities=["EMAIL_ADDRESS"])
         for d in out:
             self.assertEqual(set(d.model_dump()), KEYS)
+            self.assertEqual(
+                list(d.model_dump()),
+                [
+                    "segment_id",
+                    "start_idx",
+                    "end_idx",
+                    "entity_type",
+                    "confidence",
+                    "source",
+                    "tier",
+                    "original_value",
+                    "normalized",
+                ],
+            )
             self.assertEqual(d.entity_type, "EMAIL_ADDRESS")
             self.assertEqual(d.segment_id, "seg-email")
             self.assertEqual(d.source, "EmailRecognizer")
@@ -306,3 +320,110 @@ class EmailIntegrationTests(unittest.TestCase):
             self.assertNotIn(EMAIL, "\n".join(logging.Formatter().format(r) for r in records))
         finally:
             logger.removeHandler(handler)
+
+    def test_korean_boundary_and_unicode_idn_exact_service_spans(self):
+        cases = (
+            ("test@example.com\uc785\ub2c8\ub2e4", "test@example.com"),
+            ("test@example.com\ubb38\uc758\ub4dc\ub9bd\ub2c8\ub2e4", "test@example.com"),
+            ("test@example.co.kr\uc785\ub2c8\ub2e4", "test@example.co.kr"),
+            ("test@\uc608\uc2dc.com\uc785\ub2c8\ub2e4", "test@\uc608\uc2dc.com"),
+            ("test@b\u00fccher.de\uc785\ub2c8\ub2e4", "test@b\u00fccher.de"),
+            ("test@\uc608\uc2dc.co.kr\uc785\ub2c8\ub2e4", "test@\uc608\uc2dc.co.kr"),
+            ("test@xn--bcher-kva.de\uc785\ub2c8\ub2e4", "test@xn--bcher-kva.de"),
+            (
+                "test@example.com\ud55c\uae00.com\uc785\ub2c8\ub2e4",
+                "test@example.com\ud55c\uae00.com",
+            ),
+            ("test@example.com\u00e9.fr\uc785\ub2c8\ub2e4", "test@example.com\u00e9.fr"),
+            ("test@\uc608\uc2dc.com", "test@\uc608\uc2dc.com"),
+            ("test@b\u00fccher.de", "test@b\u00fccher.de"),
+            ("test@example.com\ud55c\uae00.com", "test@example.com\ud55c\uae00.com"),
+            ("test@example.com\u00e9.fr", "test@example.com\u00e9.fr"),
+            ("test@example.com-", "test@example.com"),
+            ("test@example.com+abc", "test@example.com"),
+        )
+        for raw, expected in cases:
+            for prefix in ("", "\uc548\ub0b4 \U0001f642 "):
+                text = prefix + raw
+                with self.subTest(text=text):
+                    detections = self.detect(text)
+                    self.assertEqual(len(detections), 1)
+                    detection = detections[0]
+                    self.assertEqual(detection.original_value, expected)
+                    self.assertEqual(detection.normalized, expected)
+                    self.assertEqual(
+                        (detection.start_idx, detection.end_idx),
+                        (len(prefix), len(prefix) + len(expected)),
+                    )
+
+    def test_korean_fallback_multiple_addresses_no_duplicates(self):
+        text = "test@example.com\uc785\ub2c8\ub2e4 test@\uc608\uc2dc.com"
+        detections = sorted(self.detect(text), key=lambda d: d.start_idx)
+        self.assertEqual(
+            [d.original_value for d in detections],
+            ["test@example.com", "test@\uc608\uc2dc.com"],
+        )
+
+    def test_korean_fallback_matcher_timeout_propagates(self):
+        self.detect(EMAIL + "\uc785\ub2c8\ub2e4")
+        fallback = self.email.patterns[-1]
+        matcher = Mock()
+        matcher.finditer.side_effect = TimeoutError("RAW_EMAIL_MARKER")
+        with replace_matcher(fallback, matcher), self.assertRaises(L3DependencyTimeoutError):
+            self.detect(EMAIL + "\uc785\ub2c8\ub2e4")
+
+    def test_korean_fallback_validator_timeout_propagates(self):
+        original = _EmailValidation.__call__
+
+        def injected(validator, text):
+            if text == EMAIL:
+                raise TimeoutError("RAW_EMAIL_MARKER")
+            return original(validator, text)
+
+        with (
+            patch.object(_EmailValidation, "__call__", injected),
+            self.assertRaises(L3DependencyTimeoutError),
+        ):
+            self.detect(EMAIL + "\uc785\ub2c8\ub2e4")
+
+    def test_unicode_tld_baseline_and_korean_suffix(self):
+        for tld in ("\ud55c\uad6d", "\ub2f7\ucef4", "\uc0bc\uc131", "\u4e2d\u56fd"):
+            for label in ("example", "\uc608\uc2dc"):
+                expected = "test@" + label + "." + tld
+                for suffix in ("", "\uc785\ub2c8\ub2e4", "\ubb38\uc758\ub4dc\ub9bd\ub2c8\ub2e4"):
+                    for prefix in ("", "\uc548\ub0b4 \U0001f642 "):
+                        raw = prefix + expected + suffix
+                        with self.subTest(raw=raw):
+                            detections = self.detect(raw)
+                            self.assertEqual(len(detections), 1)
+                            detection = detections[0]
+                            self.assertEqual(detection.original_value, expected)
+                            self.assertEqual(detection.normalized, expected)
+                            self.assertEqual(
+                                (detection.start_idx, detection.end_idx),
+                                (len(prefix), len(prefix) + len(expected)),
+                            )
+
+    def test_unicode_tld_fallback_timeout_propagates(self):
+        email = "test@\uc608\uc2dc.\ud55c\uad6d"
+        raw = email + "\uc785\ub2c8\ub2e4"
+        self.detect(raw)
+        matcher = Mock()
+        matcher.finditer.side_effect = TimeoutError("RAW_EMAIL_MARKER")
+        with (
+            replace_matcher(self.email.patterns[-1], matcher),
+            self.assertRaises(L3DependencyTimeoutError),
+        ):
+            self.detect(raw)
+        original = _EmailValidation.__call__
+
+        def injected(validator, text):
+            if text == email:
+                raise TimeoutError("RAW_EMAIL_MARKER")
+            return original(validator, text)
+
+        with (
+            patch.object(_EmailValidation, "__call__", injected),
+            self.assertRaises(L3DependencyTimeoutError),
+        ):
+            self.detect(raw)
