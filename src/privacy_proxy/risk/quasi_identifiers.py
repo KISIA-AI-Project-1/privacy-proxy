@@ -56,9 +56,7 @@ SERVICE_IDENTIFIERS = frozenset(
 SENSITIVE_INFORMATION = frozenset(
     {
         EntityType.SENSITIVE_HEALTH.value,
-        EntityType.SENSITIVE_RELIGION.value,
-        EntityType.SENSITIVE_FAMILY.value,
-        EntityType.SENSITIVE_FINANCIAL.value,
+        EntityType.SENSITIVE_SEX_LIFE.value,
     }
 )
 
@@ -69,6 +67,8 @@ QUASI_IDENTIFIERS = frozenset(
         EntityType.AGE.value,
         EntityType.AGE_GROUP.value,
         EntityType.DATE_OF_BIRTH.value,
+        EntityType.PRODUCT_ITEM.value,
+        EntityType.PURCHASE_PATTERN.value,
     }
 )
 
@@ -120,6 +120,13 @@ def to_qi_feature(entity: DetectedPII) -> QIFeature | None:
         return QIFeature("AGE", "AGE", 2, 20.0, "정확한 연령이 포함됨")
     if entity_type == EntityType.AGE_GROUP:
         return QIFeature("AGE", "AGE", 1, 8.0, "연령대 정보가 포함됨")
+
+    # Initial policy weights, pending calibration. Item and pattern are one
+    # purchase dimension: retain the stronger signal instead of double-counting.
+    if entity_type == EntityType.PRODUCT_ITEM:
+        return QIFeature("PURCHASE", "PURCHASE", 1, 5.0, "구매 상품 정보가 포함됨")
+    if entity_type == EntityType.PURCHASE_PATTERN:
+        return QIFeature("PURCHASE", "PURCHASE", 2, 12.0, "구매 패턴 정보가 포함됨")
 
     value = entity.original_value.strip()
     level = location_level(value)
