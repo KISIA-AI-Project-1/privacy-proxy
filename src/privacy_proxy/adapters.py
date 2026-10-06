@@ -35,7 +35,14 @@ async def get_current_user(authorization: str = Header(default="")) -> UserConte
         user_id="poc-user",
         department="poc-team",
         role="developer",
-        allowed_models=["gpt-5", "gpt-4o", "gpt-4o-mini", "claude-3-5-sonnet", "gemini-1.5-pro"],
+        allowed_models=[
+            "gpt-5",
+            "gpt-4o",
+            "gpt-4o-mini",
+            "claude-3-5-sonnet",
+            "gemini-1.5-pro",
+            "gemini-3.8-flash",
+        ],
         restore_level="default",
     )
 

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from math import prod
 
 from privacy_proxy.risk.combination import select_representative_qis
-from privacy_proxy.risk.entity_contract import L5_SUPPORTED_ENTITY_TYPES
+from privacy_proxy.risk.entity_contract import L4_COMMERCE_ENTITY_TYPES, L5_SUPPORTED_ENTITY_TYPES
 from privacy_proxy.risk.quasi_identifiers import PrivacyClass, privacy_class
 from privacy_proxy.schemas import DetectedPII, DetectionTier
 
@@ -24,7 +24,7 @@ _IDENTIFIABILITY_BASE = {
 }
 
 # Operational harm weights, not statutory declarations that every listed type
-# is legally "sensitive information".  The four SENSITIVE_* types remain the
+# is legally "sensitive information".  The two SENSITIVE_* types remain the
 # only members of the project's SENSITIVE_INFORMATION class.
 _SENSITIVITY_BY_TYPE = {
     "PERSON_EN": 0.30,
@@ -41,9 +41,10 @@ _SENSITIVITY_BY_TYPE = {
     "KR_DRIVER_LICENSE": 0.80,
     "KR_BRN": 0.20,
     "SENSITIVE_HEALTH": 1.00,
-    "SENSITIVE_RELIGION": 0.90,
-    "SENSITIVE_FINANCIAL": 0.90,
-    "SENSITIVE_FAMILY": 0.70,
+    "SENSITIVE_SEX_LIFE": 1.00,
+    # Initial experimental weights; calibrate with commerce fixtures.
+    "PRODUCT_ITEM": 0.10,
+    "PURCHASE_PATTERN": 0.25,
     "ACCOUNT_NUMBER": 0.85,
     "ADDRESS_ROAD": 0.55,
     "ADDRESS_LOT": 0.55,
@@ -157,6 +158,23 @@ def calculate_weighted_risk(entities: list[DetectedPII]) -> WeightedRiskResult:
     )
     if unsupported:
         raise ValueError("unsupported detected entity type")
+
+    # Product and purchase-pattern mentions describe one purchase dimension.
+    # Validate all confidences before dropping redundant commerce evidence.
+    commerce = [entity for entity in entities if entity.entity_type in L4_COMMERCE_ENTITY_TYPES]
+    if commerce:
+        for entity in commerce:
+            _reliability(entity)
+        representative = max(
+            commerce,
+            key=lambda entity: (
+                _SENSITIVITY_BY_TYPE[entity.entity_type] * _reliability(entity),
+                entity.entity_type == "PURCHASE_PATTERN",
+            ),
+        )
+        entities = [
+            entity for entity in entities if entity.entity_type not in L4_COMMERCE_ENTITY_TYPES
+        ] + [representative]
 
     classified = [(entity, privacy_class(entity)) for entity in entities]
     identification = _identification_component(entities)

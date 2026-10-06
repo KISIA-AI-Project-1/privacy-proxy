@@ -1,0 +1,49 @@
+# frame 생략 시 state. stage=용어 바로 뒤 중/했/예정, doc=서류 제출 맥락
+- {term: 우울증}
+- {term: 공황장애}
+- {term: 불안장애}
+- {term: 강박장애}
+- {term: 조울증}
+- {term: 양극성장애}
+- {term: 조현병}
+- {term: 불면증}
+- {term: 치매}
+- {term: 거식증}
+- {term: 에이즈}
+- {term: HIV}
+- {term: 간염}
+- {term: 결핵}
+- {term: 대상포진}
+- {term: 성병}
+- {term: 유방암}
+- {term: 위암}
+- {term: 대장암}
+- {term: 폐암}
+- {term: 갑상선암}
+- {term: 전립선암}
+- {term: 백혈병}
+- {term: 뇌졸중}
+- {term: 심근경색}
+- {term: 당뇨}
+- {term: 고혈압}
+- {term: 고지혈증}
+- {term: 천식}
+- {term: 아토피}
+- {term: 류마티스}
+- {term: 신부전}
+- {term: 통풍}
+- {term: 디스크}
+- {term: 화상}
+- {term: 불임}
+- {term: 난임}
+- {term: 생리불순}
+- {term: 발기부전}
+- {term: 피임, frame: stage}
+- {term: 임신, frame: stage}
+- {term: 출산, frame: stage}
+- {term: 갱년기, frame: stage}
+- {term: 탈모}
+- {term: 비만}
+- {term: 처방전, frame: doc}
+- {term: 진단서, frame: doc}
+- {term: 소견서, frame: doc}
