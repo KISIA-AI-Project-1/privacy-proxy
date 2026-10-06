@@ -26,7 +26,7 @@ _MODIFIERS = (
 )  # fmt: skip
 _CONTEXT = (
     "샀", "구매", "주문", "시켜", "시킨", "배송", "정기", "결제", "환불",
-    "반품", "교환", "재구매", "받았", "받고",
+    "반품", "교환", "재구매", "받았", "받고", "시켰", "구입", "신청",
 )  # fmt: skip
 # 강한 단서가 있으면 약한 단서(주기 표현)는 그 수식어로 보고 버린다
 _STRONG = (
@@ -102,8 +102,13 @@ def _item(
     )
 
 
-def find_purchase(text: str, segment_id: str = "seg-1") -> list[DetectedPII]:
-    """PRODUCT_ITEM·PURCHASE_PATTERN. 문장 경계를 넘는 연결은 하지 않는다."""
+def find_purchase(
+    text: str, segment_id: str = "seg-1", keep: list[tuple[int, int]] | None = None
+) -> list[DetectedPII]:
+    """PRODUCT_ITEM·PURCHASE_PATTERN. 문장 경계를 넘는 연결은 하지 않는다.
+
+    ``keep`` 은 유지할 2번 스팬. 겹치는 상품은 버리고, 단서는 남은 상품 기준으로 판정한다.
+    """
     out: list[DetectedPII] = []
     for s, e in _sentences(text):
         sq, idx = _squash(text[s:e], s)
@@ -112,6 +117,8 @@ def find_purchase(text: str, segment_id: str = "seg-1") -> list[DetectedPII]:
             a, b = m.span()
             distance = _context_distance(text, sq, idx, a, b)
             if distance is None or _guarded(sq, a, b):
+                continue
+            if any(idx[a] < kb and ka < idx[b - 1] + 1 for ka, kb in keep or ()):
                 continue
             products.append((a, b))
             conf = score(_BASE_SCORE, distance, _WINDOW)

@@ -53,7 +53,7 @@ POSITIVE = [
     ("탈 모 치료제 주문했어요", [(ITEM, "탈 모 치료제")]),
     ("탈모 치료제 샀어요", [(ITEM, "탈모 치료제")]),
     ("탈모샴푸 구매했어요", [(ITEM, "탈모샴푸")]),
-    ("우울증 영양제 시켜놨어요", [(ITEM, "우울증 영양제")]),
+    ("우울증 영양제 시켰어요", [(ITEM, "우울증 영양제")]),
     ("우 울 증 개선용 영양제 주문", [(ITEM, "우 울 증 개선용 영양제")]),
     ("고혈압약 환불해주세요", [(ITEM, "고혈압약")]),
     ("당뇨 케어 영양제 반품할게요", [(ITEM, "당뇨 케어 영양제")]),
@@ -62,6 +62,8 @@ POSITIVE = [
     ("탈모치료제 정 기 배송 신청", [(ITEM, "탈모치료제"), (PATTERN, "정 기 배송")]),
     ("탈모치료제 재 구매 했어요", [(ITEM, "탈모치료제"), (PATTERN, "재 구매")]),
     ("탈모치료제 정기 결제 해지하고 싶어요", [(ITEM, "탈모치료제"), (PATTERN, "정기 결제")]),
+    ("탈모치료제 구입했어요", [(ITEM, "탈모치료제")]),
+    ("탈모치료제 신청할게요", [(ITEM, "탈모치료제")]),
     # 성생활 제품
     ("콘돔 정기배송 신청하고 싶어요", [(ITEM, "콘돔"), (PATTERN, "정기배송")]),
     ("임신테스트기 주문했어요", [(ITEM, "임신테스트기")]),
@@ -126,20 +128,15 @@ def test_clue_does_not_cross_sentence_boundary() -> None:
     assert got("탈모치료제 샀어요. 정기배송은 가능한가요") == [(ITEM, "탈모치료제")]
 
 
-def test_state_statement_kept_next_to_product() -> None:
-    # 첫 "당뇨"는 독립 상태 서술이라 상품 스팬(당뇨약)과 겹치지 않아 유지된다
-    text = "당뇨 있어서 당뇨약 주문"
-    assert [(r.entity_type.value, r.original_value, r.start_idx) for r in find_sensitive(text)] == [
-        (HEALTH, "당뇨", 0),
-        (ITEM, "당뇨약", 7),
-    ]
+def test_state_statement_wins_over_overlapping_product() -> None:
+    # 둘째 "당뇨"도 독립 상태 서술(있어서)이라 2번 스팬이 유지되고 겹치는 "당뇨약"은 버려진다
+    assert got("당뇨 있어서 당뇨약 주문") == [(HEALTH, "당뇨"), (HEALTH, "당뇨")]
 
 
-def test_overlapping_state_span_replaced_by_product() -> None:
-    # 2번 단독으로는 "당뇨"(상품 스팬 안쪽)를 내지만 통합에서는 3번이 우선
-    text = "당뇨 영양제 먹고 있어요 주문"
-    assert [r.original_value for r in find_state(text)] == ["당뇨"]
-    assert got(text) == [(ITEM, "당뇨 영양제")]
+def test_overlapping_product_dropped_and_clue_discarded() -> None:
+    assert got("당뇨 영양제 먹고 있어요 주문") == [(HEALTH, "당뇨")]
+    # 상품이 정리되고 나면 같은 문장의 단서도 짝이 없어 버려진다
+    assert got("당뇨 영양제 먹고 있어요 정기배송") == [(HEALTH, "당뇨")]
 
 
 def test_gap_that_is_not_a_modifier_gives_no_product() -> None:
