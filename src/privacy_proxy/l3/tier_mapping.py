@@ -48,6 +48,10 @@ def tier_for(
         # Context cannot be reconstructed from the surface alone; no score
         # inference or shared last-request evidence is used here.
         return DetectionTier.RULE_ANCHORED
+    if entity == "AGE_GROUP":
+        # Exact producer type is verified above. Emission requires the H1-R1
+        # anchor, gap, clause and semantic checks, never a numeric score.
+        return DetectionTier.RULE_ANCHORED
     if entity == "KR_PASSPORT":
         return DetectionTier.RULE_ANCHORED
     if entity in ("KR_RRN", "KR_FRN"):

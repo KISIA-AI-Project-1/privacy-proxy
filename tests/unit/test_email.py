@@ -45,7 +45,7 @@ class EmailUnitTests(unittest.TestCase):
             },
         )
 
-    def test_exact_eight_unique_email_identity(self):
+    def test_exact_nine_unique_email_identity(self):
         self.assertEqual(
             set(validate_registry(self.registry)),
             {
@@ -57,6 +57,7 @@ class EmailUnitTests(unittest.TestCase):
                 "PHONE_NUMBER",
                 "EMAIL_ADDRESS",
                 "AGE",
+                "AGE_GROUP",
             },
         )
         self.assertIs(type(self.email), EmailRecognizer)
