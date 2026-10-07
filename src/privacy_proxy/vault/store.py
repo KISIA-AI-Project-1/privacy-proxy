@@ -109,7 +109,7 @@ return {1, ARGV[1]}
 
 
 class RedisVaultStore:
-    """`Redis(decode_responses=True)` 클라이언트를 받는다."""
+    """`Redis(decode_responses=False)` 클라이언트를 받는다."""
 
     def __init__(
         self, client: Redis[bytes], crypto: VaultCrypto, ttl_seconds: int = DEFAULT_TTL_SECONDS
