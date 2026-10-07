@@ -6,6 +6,7 @@ from typing import Any
 
 import httpx
 
+from privacy_proxy.config import get_settings
 from privacy_proxy.schemas import ProxyContext
 
 PRIVACY_SYSTEM_SKILL = """
@@ -18,6 +19,15 @@ PRIVACY_SYSTEM_SKILL = """
 - 토큰의 괄호, 이름, 숫자를 변경하거나 번역하지 마세요.
 - 원래 개인정보를 추측하거나 복구하려 하지 마세요.
 """
+
+
+def _capture_demo_request(
+    context: ProxyContext | None,
+    body: dict[str, Any],
+) -> None:
+    """시연 모드에서만 실제 전송할 요청 본문을 보관한다."""
+    if context is not None and get_settings().demo_mode:
+        context.upstream_request_body = copy.deepcopy(body)
 
 
 async def _guard_l7_stream(
@@ -79,11 +89,11 @@ async def call_gemini_l7(context: ProxyContext) -> ProxyContext:
         source: AsyncIterable[str]
 
         if vendor == "openai":
-            source = _stream_openai(body, api_key)
+            source = _stream_openai(body, api_key, context)
         elif vendor == "anthropic":
-            source = _stream_claude(body, api_key)
+            source = _stream_claude(body, api_key, context)
         else:
-            source = _stream_gemini(body, api_key)
+            source = _stream_gemini(body, api_key, context)
 
         context.llm_raw_response = _guard_l7_stream(
             context,
@@ -192,6 +202,7 @@ def _decode_event(data: str) -> dict[str, Any]:
 async def _stream_openai(
     body: dict[str, Any],
     api_key: str,
+    context: ProxyContext | None = None,
 ) -> AsyncGenerator[str, None]:
     """OpenAI 응답에서 텍스트 청크를 읽는다."""
     headers = {
@@ -199,6 +210,7 @@ async def _stream_openai(
         "Content-Type": "application/json",
     }
     body["stream"] = True
+    _capture_demo_request(context, body)
 
     async with (
         httpx.AsyncClient(timeout=30.0) as client,
@@ -232,6 +244,7 @@ async def _stream_openai(
 async def _stream_claude(
     body: dict[str, Any],
     api_key: str,
+    context: ProxyContext | None = None,
 ) -> AsyncGenerator[str, None]:
     """Claude 응답에서 텍스트 청크를 읽는다."""
     headers = {
@@ -240,6 +253,7 @@ async def _stream_claude(
         "Content-Type": "application/json",
     }
     body["stream"] = True
+    _capture_demo_request(context, body)
 
     async with (
         httpx.AsyncClient(timeout=30.0) as client,
@@ -270,6 +284,7 @@ async def _stream_claude(
 async def _stream_gemini(
     body: dict[str, Any],
     api_key: str,
+    context: ProxyContext | None = None,
 ) -> AsyncGenerator[str, None]:
     """Gemini 응답에서 텍스트 청크를 읽는다."""
     # 모델은 URL에 지정하고 요청 본문에서는 제거한다.
@@ -281,6 +296,7 @@ async def _stream_gemini(
         model = model[len("models/") :]
 
     body.pop("stream", None)
+    _capture_demo_request(context, body)
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent"
 

@@ -71,9 +71,7 @@ BASE_SPECS: dict[str, EntitySpec] = {
     "KR_BRN": _tok("BRN"),
     "DATE_OF_BIRTH": _tok("DOB"),
     "SENSITIVE_HEALTH": _tok("HEALTH"),
-    "SENSITIVE_RELIGION": _tok("RELIGION"),
-    "SENSITIVE_FAMILY": _tok("FAMILY"),
-    "SENSITIVE_FINANCIAL": _tok("FINANCIAL"),
+    "SENSITIVE_SEX_LIFE": _tok("SEX_LIFE"),
 }
 
 # policy_action 에 따라 달라지는 타입. "*" 는 policy 가 None/그 외일 때의 기본값(없으면 통과)

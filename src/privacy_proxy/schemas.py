@@ -155,6 +155,11 @@ class ProxyContext(BaseModel):
     token_types: dict[str, str] = Field(default_factory=dict)
 
     reconstructed_body: dict[str, Any] = Field(default_factory=dict)
+    upstream_request_body: dict[str, Any] = Field(
+        default_factory=dict,
+        exclude=True,
+        repr=False,
+    )
     llm_raw_response: Any = Field(default=None, exclude=True)
     final_response: Any = Field(default=None, exclude=True)
     final_response_log: str | None = Field(default=None, exclude=True)
