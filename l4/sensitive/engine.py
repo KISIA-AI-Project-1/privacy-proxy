@@ -19,6 +19,7 @@ import yaml
 from l4.recognizers.context import has_anchor, score
 from l4.sensitive.health.guards import GUARDS as _HEALTH_GUARDS
 from l4.sensitive.sex_life.guards import GUARDS as _SEX_LIFE_GUARDS
+from l4.text_normalize import normalize_for_match
 from privacy_proxy.schemas import DetectedPII, DetectionTier, EntityType
 
 _BASE_SCORE = 0.6
@@ -26,6 +27,9 @@ _WINDOW = 25
 
 # 프레임 이름 → (리터럴 목록, 창). stage/doc 외 이름은 용어 주변 창 안 어디서든.
 _CONSUME = ("복용중", "복용하고", "복용했", "먹고있", "먹는중", "먹었")
+_MEDICATE = ("맞았", "발랐", "바르고", "처방받")
+_SYMPTOM = ("생겼", "나타났", "의심", "가려워", "가렵", "아파요", "아파서", "아팠")
+_EVENT = ("찢어", "터져", "실패", "깜빡", "못먹")
 _FRAMES: dict[str, tuple[tuple[str, ...], int]] = {
     "state": (
         (
@@ -49,16 +53,23 @@ _FRAMES: dict[str, tuple[tuple[str, ...], int]] = {
             "걸려",
             "시달",
             *_CONSUME,
+            *_MEDICATE,
+            *_SYMPTOM,
+            *_EVENT,
         ),
         _WINDOW,
     ),
     "doc": (("첨부", "제출", "보내", "올렸", "드릴"), _WINDOW),
-    "use": (("사용중", "사용하고", "사용했", "쓰고있", "쓰는중"), _WINDOW),
+    "use": (("사용중", "사용하고", "사용했", "쓰고있", "쓰는중", *_EVENT), _WINDOW),
     "consume": (_CONSUME, _WINDOW),
-    "stage": (("중", "했", "예정"), 2),  # 용어 바로 뒤(거리 0)에서만 인정
+    "stage": (("중", "했", "예정", "실패"), 2),  # 용어 바로 뒤(거리 0)에서만 인정
 }
 # 용어 바로 뒤에 붙는 광고 문구 — 복용 프레임이 같이 있어야 양성
 _AD_MARKERS = ("에좋", "에도움", "에효과", "예방", "개선", "케어")
+
+# 용어 앞 숫자형 접두("2형", "제2형", "타입2")와 뒤 병/증 접미는 스팬에 포함(조사는 제외)
+_PREFIX = r"(?:제?\d형|타입\d)?"
+_SUFFIX = r"(?:[병증](?!원))?"
 
 _DIR = Path(__file__).parent
 _BOUNDARY = re.compile(r"(?<![.\d])\.(?![.\d])|[!?。\n]")  # 소수점·말줄임표는 경계 아님
@@ -68,7 +79,7 @@ def _squash(text: str, base: int = 0) -> tuple[str, list[int]]:
     """공백 제거 + 소문자. 반환 문자열 각 글자의 원문 인덱스를 함께 돌려준다."""
     chars: list[str] = []
     idx: list[int] = []
-    for i, ch in enumerate(text):
+    for i, ch in enumerate(normalize_for_match(text)):
         if ch.isspace():
             continue
         for c in ch.lower():
@@ -84,7 +95,8 @@ class _Category:
         self.guards = guards
         self.frames = {_squash(e["term"])[0]: e.get("frame", "state") for e in entries}
         terms = sorted(self.frames, key=len, reverse=True)  # 같은 시작이면 긴 용어 우선
-        self.pattern = re.compile("|".join(map(re.escape, terms)))
+        alt = "|".join(map(re.escape, terms))
+        self.pattern = re.compile(rf"{_PREFIX}(?P<t>{alt}){_SUFFIX}")
 
 
 _CATEGORIES = (
@@ -113,7 +125,7 @@ def _scan(text: str, cat: _Category) -> list[tuple[int, int, float]]:
                 for g in re.finditer(re.escape(guard), sq)
             ):
                 continue
-            frame = cat.frames[m.group()]
+            frame = cat.frames[m.group("t")]
             if frame == "state" and any(sq.startswith(k, b) for k in _AD_MARKERS):
                 frame = "consume"
             anchors, window = _FRAMES[frame]

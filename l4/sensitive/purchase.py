@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 
 from l4.recognizers.context import has_anchor, score
-from l4.sensitive.engine import _CATEGORIES, _sentences, _squash
+from l4.sensitive.engine import _CATEGORIES, _PREFIX, _SUFFIX, _sentences, _squash
 from privacy_proxy.schemas import DetectedPII, DetectionTier, EntityType
 
 _BASE_SCORE = 0.6
@@ -18,7 +18,7 @@ _WINDOW = 25
 
 _PRODUCT_TYPES = (
     "치료제", "영양제", "보충제", "보조제", "비타민", "샴푸", "크림", "앰플",
-    "세럼", "패치", "스프레이", "젤", "약", "키트", "테스트기",
+    "세럼", "패치", "스프레이", "젤", "약", "키트", "테스트기", "연고", "로션",
 )  # fmt: skip
 _MODIFIERS = (
     "개선용", "치료용", "예방용", "관리용", "완화용", "전용", "에좋은",
@@ -61,14 +61,28 @@ def _terms(keep: set[str] | None, drop: set[str]) -> list[str]:
 
 _DISEASE = _alt(_terms(None, {"doc", "use"}))
 _STANDALONE = _alt(_terms({"use"}, set()))
+_DRUG = _alt(
+    [t for t in _terms(None, {"doc", "use"}) if t.endswith("약")]
+)  # 사후피임약 등 약 자체가 용어
+_DIS = rf"{_PREFIX}(?:{_DISEASE}){_SUFFIX}"
+_MOD = f"(?:{_alt(_MODIFIERS)})"
+_TYPE = f"(?:{_alt(_PRODUCT_TYPES)})(?![속간])"
+# 수식어가 있을 때만 사이에 1어절(최대 12자)을 허용 — 어절·어미 검사는 원문 기준(_bad_gap)
 _PRODUCT = re.compile(
-    rf"(?:{_DISEASE})(?:{_alt(_MODIFIERS)}){{0,2}}(?:{_alt(_PRODUCT_TYPES)})(?![속간])"
+    rf"(?:{_DRUG})|{_DIS}{_MOD}{{0,2}}{_TYPE}"
+    rf"|{_DIS}{_MOD}{{1,2}}(?P<gap>.{{1,12}}?){_TYPE}"
     rf"|{_STANDALONE}"
 )
+_GAP_ENDINGS = ("있어", "했", "중", "받")
 _STRONG_RE = re.compile(_alt(_STRONG, escape=False))
 _WEAK_RE = re.compile(_alt(_WEAK, escape=False))
 _GUARDS = tuple(g for c in _CATEGORIES for g in c.guards)
 _COUNSELOR = re.compile(r"[ \t]*상담사[ \t]*:")
+
+
+def _bad_gap(text: str, sq: str, idx: list[int], a: int, b: int) -> bool:
+    raw = text[idx[a] : idx[b - 1] + 1]
+    return bool(re.search(r"\W", raw)) or any(e in sq[a:b] for e in _GAP_ENDINGS)
 
 
 def _guarded(sq: str, a: int, b: int) -> bool:
@@ -115,6 +129,8 @@ def find_purchase(
         products: list[tuple[int, int]] = []
         for m in _PRODUCT.finditer(sq):
             a, b = m.span()
+            if m["gap"] is not None and _bad_gap(text, sq, idx, *m.span("gap")):
+                continue
             distance = _context_distance(text, sq, idx, a, b)
             if distance is None or _guarded(sq, a, b):
                 continue
