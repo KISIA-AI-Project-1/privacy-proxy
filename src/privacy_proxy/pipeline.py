@@ -7,9 +7,11 @@ from l4.recognizers import (
     find_order_id,
     find_tracking_number,
 )
+from redis import Redis
 
 from audit.logger import audit_log_l9
 from privacy_proxy.adapters import AdapterRouter
+from privacy_proxy.config import get_settings
 from privacy_proxy.risk import run_l5_risk_scoring
 from privacy_proxy.schemas import (
     DetectedPII,
@@ -18,7 +20,7 @@ from privacy_proxy.schemas import (
     UserContext,
 )
 from privacy_proxy.vault import Tokenizer, VaultCrypto
-from privacy_proxy.vault.store import InMemoryVaultStore
+from privacy_proxy.vault.store import InMemoryVaultStore, RedisVaultStore, VaultStore
 from restore.restorer import restore_l8
 from upstream.llm_client import call_gemini_l7
 
@@ -42,12 +44,38 @@ def _get_l3_service() -> "L3AnalyzerService":
 
 
 def _get_l6_tokenizer() -> Tokenizer:
-    """로컬 통합 확인용 메모리 저장소와 실제 L6를 초기화한다."""
+    """설정에 따라 메모리 또는 Redis 저장소로 L6를 초기화한다."""
     global _l6_tokenizer
 
     if _l6_tokenizer is None:
-        crypto = VaultCrypto(os.urandom(32))
-        store = InMemoryVaultStore(crypto)
+        settings = get_settings()
+        store: VaultStore
+
+        if settings.vault_backend == "redis":
+            encryption_key = settings.vault_encryption_key.get_secret_value()
+
+            if not encryption_key.strip():
+                raise ValueError("VAULT_ENCRYPTION_KEY_REQUIRED")
+
+            crypto = VaultCrypto.from_base64(encryption_key)
+
+            client: Redis[bytes] = Redis.from_url(
+                settings.redis_url,
+                decode_responses=False,
+                socket_connect_timeout=3,
+                socket_timeout=3,
+            )
+            client.ping()
+
+            store = RedisVaultStore(
+                client,
+                crypto,
+                ttl_seconds=settings.vault_ttl_seconds,
+            )
+        else:
+            crypto = VaultCrypto(os.urandom(32))
+            store = InMemoryVaultStore(crypto)
+
         _l6_tokenizer = Tokenizer(
             store,
             crypto,
