@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     vault_ttl_seconds: int = Field(default=3600, gt=0)
 
     log_level: str = "INFO"
+    demo_mode: bool = False
 
 
 @lru_cache
