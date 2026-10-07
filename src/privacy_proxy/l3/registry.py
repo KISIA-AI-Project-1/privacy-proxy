@@ -1,4 +1,4 @@
-"""D7 eight-producer capability boundary, not the PD-014 registry."""
+"""D7 + AGE_GROUP v0.1 nine-producer boundary, not the PD-014 registry."""
 
 from typing import Any, cast
 
@@ -13,6 +13,7 @@ from presidio_analyzer.predefined_recognizers import (
     PhoneRecognizer,
 )
 
+from .age_group_recognizer import AgeGroupStatementRecognizer
 from .age_recognizer import AgeStatementRecognizer
 from .email_validation import configure_email, validate_email_configuration
 
@@ -25,6 +26,7 @@ PRODUCER_TYPES: dict[str, type[Any]] = {
     "PHONE_NUMBER": PhoneRecognizer,
     "EMAIL_ADDRESS": EmailRecognizer,
     "AGE": AgeStatementRecognizer,
+    "AGE_GROUP": AgeGroupStatementRecognizer,
 }
 SUPPORTED_ENTITIES = tuple(PRODUCER_TYPES)
 

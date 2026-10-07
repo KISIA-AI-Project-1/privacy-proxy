@@ -300,14 +300,15 @@ class Tokenizer:
     @staticmethod
     def _resolve_overlaps(entities: Iterable[Any]) -> list[Any]:
         """겹치는 탐지는 (더 긴 span, 더 높은 confidence) 우선으로 하나만 남긴다."""
-        ordered = sorted(
-            entities,
-            key=lambda e: (
-                -(e.end_idx - e.start_idx),
-                -float(e.confidence if e.confidence is not None else 0.0),
-                e.start_idx,
-            ),
-        )
+
+        def priority(entity: Any) -> tuple[int, float, int]:
+            confidence = getattr(entity, "confidence", 0.0)
+            # H2-R1: an ephemeral sorting rank, not measured confidence.
+            # Preserve the canonical None and all non-null conversion behavior.
+            rank = 0.0 if confidence is None else float(confidence)
+            return (-(entity.end_idx - entity.start_idx), -rank, entity.start_idx)
+
+        ordered = sorted(entities, key=priority)
         kept: list[Any] = []
         for e in ordered:
             if all(e.end_idx <= k.start_idx or e.start_idx >= k.end_idx for k in kept):
