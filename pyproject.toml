@@ -30,6 +30,13 @@ detection = [
     "torch>=2.5",
 ]
 
+# 정규식 기반 L3·L4 시연용. 모델 기반 NER은 포함하지 않는다.
+detection-lite = [
+    "presidio-analyzer>=2.2",
+    "presidio-anonymizer>=2.2",
+    "spacy>=3.8",
+]
+
 # L4 NER 학습 전용. 런타임 추론에는 필요 없어서 detection과 분리한다.
 #   uv sync --extra training
 training = [

@@ -2746,6 +2746,11 @@ detection = [
     { name = "torch" },
     { name = "transformers" },
 ]
+detection-lite = [
+    { name = "presidio-analyzer" },
+    { name = "presidio-anonymizer" },
+    { name = "spacy" },
+]
 training = [
     { name = "accelerate" },
     { name = "datasets" },
@@ -2779,19 +2784,22 @@ requires-dist = [
     { name = "pandas", marker = "extra == 'training'", specifier = ">=2.2" },
     { name = "phonenumbers", specifier = ">=9.0" },
     { name = "presidio-analyzer", marker = "extra == 'detection'", specifier = ">=2.2" },
+    { name = "presidio-analyzer", marker = "extra == 'detection-lite'", specifier = ">=2.2" },
     { name = "presidio-anonymizer", marker = "extra == 'detection'", specifier = ">=2.2" },
+    { name = "presidio-anonymizer", marker = "extra == 'detection-lite'", specifier = ">=2.2" },
     { name = "pydantic", specifier = ">=2.10" },
     { name = "pydantic-settings", specifier = ">=2.7" },
     { name = "redis", specifier = ">=5.2" },
     { name = "seqeval", marker = "extra == 'training'", specifier = ">=1.2" },
     { name = "spacy", marker = "extra == 'detection'", specifier = ">=3.8" },
+    { name = "spacy", marker = "extra == 'detection-lite'", specifier = ">=3.8" },
     { name = "torch", marker = "extra == 'detection'", specifier = ">=2.5" },
     { name = "torch", marker = "extra == 'training'", specifier = ">=2.5" },
     { name = "transformers", marker = "extra == 'detection'", specifier = ">=4.48" },
     { name = "transformers", marker = "extra == 'training'", specifier = ">=4.48" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34" },
 ]
-provides-extras = ["detection", "training"]
+provides-extras = ["detection", "detection-lite", "training"]
 
 [package.metadata.requires-dev]
 dev = [
