@@ -21,8 +21,6 @@ async def get_current_user(authorization: str = Header(default="")) -> UserConte
     - 통과 시 요청자 정보(UserContext) 반환
     """
     expected = f"Bearer {PROXY_API_KEY}"
-    print(f"서버가 기대하는 값: [{expected}]")
-    print(f"실제 입력받은 값: [{authorization}]")
 
     if not authorization or authorization != expected:
         raise HTTPException(
@@ -42,6 +40,7 @@ async def get_current_user(authorization: str = Header(default="")) -> UserConte
             "claude-3-5-sonnet",
             "gemini-1.5-pro",
             "gemini-3.8-flash",
+            "gemini-3.1-flash-lite",
         ],
         restore_level="default",
     )
