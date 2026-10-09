@@ -299,7 +299,7 @@ def test_ac_exact_eleven_registry(service):
     assert p.supported_language == "ko"
     assert p.name == "AgeGroupStatementRecognizer"
     assert len({p.id for p in producers.values()}) == 11
-    assert len(service.analyze(RAW, SEGMENT)) == 1
+    assert len(service.analyze(RAW, SEGMENT, entities=["AGE_GROUP"])) == 1
 
 
 @pytest.mark.parametrize(
