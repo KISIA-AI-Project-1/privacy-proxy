@@ -52,6 +52,11 @@ def tier_for(
         # Exact producer type is verified above. Emission requires the H1-R1
         # anchor, gap, clause and semantic checks, never a numeric score.
         return DetectionTier.RULE_ANCHORED
+    if entity == "DATE_OF_BIRTH":
+        # Exact producer identity is verified above. DOB emission requires
+        # approved birth-context evidence plus Gregorian/date-bound checks.
+        # That context is not reconstructible from the emitted raw slice alone.
+        return DetectionTier.RULE_ANCHORED
     if entity == "KR_PASSPORT":
         return DetectionTier.RULE_ANCHORED
     if entity in ("KR_RRN", "KR_FRN"):
