@@ -1,4 +1,4 @@
-"""D7 + AGE_GROUP v0.1 nine-producer boundary, not the PD-014 registry."""
+"""Eleven exact L3 producers; not the PD-014 source naming registry."""
 
 from typing import Any, cast
 
@@ -17,6 +17,7 @@ from .age_group_recognizer import AgeGroupStatementRecognizer
 from .age_recognizer import AgeStatementRecognizer
 from .date_of_birth_recognizer import DateOfBirthRecognizer
 from .email_validation import configure_email, validate_email_configuration
+from .location_recognizer import LocationRecognizer
 
 PRODUCER_TYPES: dict[str, type[Any]] = {
     "KR_RRN": KrRrnRecognizer,
@@ -29,6 +30,7 @@ PRODUCER_TYPES: dict[str, type[Any]] = {
     "AGE": AgeStatementRecognizer,
     "AGE_GROUP": AgeGroupStatementRecognizer,
     "DATE_OF_BIRTH": DateOfBirthRecognizer,
+    "LOCATION": LocationRecognizer,
 }
 SUPPORTED_ENTITIES = tuple(PRODUCER_TYPES)
 
