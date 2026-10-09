@@ -56,8 +56,9 @@ ENTITIES = {
     "AGE",
     "AGE_GROUP",
     "DATE_OF_BIRTH",
+    "LOCATION",
 }
-UNSUPPORTED = ("PERSON_EN", "LOCATION", "ADDRESS")
+UNSUPPORTED = ("PERSON_EN", "ADDRESS")
 ALIASES = ("AGEGROUP", "AGE-GROUP", "age_group", "ageGroup")
 Z1 = "고객은 30대이며 실제 나이는 32세입니다."
 Z2 = "나이: 32세, 연령대: 30대"
@@ -134,10 +135,10 @@ def test_h2_real_runtime_semantics_and_schema(service, case):
 
 
 @pytest.mark.parametrize("raw,expected", [(Z1, Z_EXPECTED[0]), (Z2, Z_EXPECTED[1])])
-@pytest.mark.parametrize("entities", [["AGE"], ["AGE_GROUP"], ["AGE", "AGE_GROUP"], None])
+@pytest.mark.parametrize("entities", [["AGE"], ["AGE_GROUP"], ["AGE", "AGE_GROUP"]])
 def test_z_age_coexistence(service, raw, expected, entities):
     detections = service.analyze(raw, SEGMENT, entities=entities)
-    wanted = sorted(item for item in expected if entities is None or item[0] in entities)
+    wanted = sorted(item for item in expected if item[0] in entities)
     actual = sorted((d.entity_type, d.start_idx, d.end_idx, d.original_value) for d in detections)
     assert actual == wanted
     for d in detections:
@@ -162,10 +163,9 @@ def test_z_no_derived_detection(service, raw, entities):
     assert service.analyze(raw, SEGMENT, entities=entities) == []
 
 
-def test_z_refined_only_and_default_capability(service):
-    for entities in (["AGE", "AGE_GROUP"], None):
-        ds = service.analyze(REFINED, SEGMENT, entities=entities)
-        assert [(d.entity_type, d.start_idx, d.end_idx) for d in ds] == [("AGE_GROUP", 4, 10)]
+def test_z_refined_only_explicit_capability(service):
+    ds = service.analyze(REFINED, SEGMENT, entities=["AGE", "AGE_GROUP"])
+    assert [(d.entity_type, d.start_idx, d.end_idx) for d in ds] == [("AGE_GROUP", 4, 10)]
 
 
 @pytest.mark.parametrize("segment", [SEGMENT, "h2-segment-99", "seg-1"])
@@ -287,10 +287,10 @@ def test_ab_language_and_input_contracts(service):
             service.analyze(RAW, SEGMENT, entities=entities)
 
 
-def test_ac_exact_ten_registry(service):
+def test_ac_exact_eleven_registry(service):
     registry = service._analyzer.registry
     producers = validate_registry(registry)
-    assert len(registry.recognizers) == 10
+    assert len(registry.recognizers) == 11
     assert set(producers) == ENTITIES
     assert registry.supported_languages == ["ko"]
     p = producers["AGE_GROUP"]
@@ -298,8 +298,8 @@ def test_ac_exact_ten_registry(service):
     assert p.supported_entities == ["AGE_GROUP"]
     assert p.supported_language == "ko"
     assert p.name == "AgeGroupStatementRecognizer"
-    assert len({p.id for p in producers.values()}) == 10
-    assert len(service.analyze(RAW, SEGMENT)) == 1
+    assert len({p.id for p in producers.values()}) == 11
+    assert len(service.analyze(RAW, SEGMENT, entities=["AGE_GROUP"])) == 1
 
 
 @pytest.mark.parametrize(

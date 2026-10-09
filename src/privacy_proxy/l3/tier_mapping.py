@@ -17,6 +17,10 @@ def tier_for(
 ) -> DetectionTier:
     if entity not in PRODUCER_TYPES or type(producer) is not PRODUCER_TYPES[entity]:
         raise ProvenanceError("UNVERIFIED_TIER_PRODUCER")
+    if entity == "LOCATION":
+        # Exact producer identity was verified above; LC model evidence remains
+        # MODEL after R01/R02 refinement, independently of numeric scores.
+        return DetectionTier.MODEL
     if entity in ("KR_BRN", "KR_DRIVER_LICENSE"):
         # Recheck the exact emitted raw slice with the same installed validator.
         # This confirms per-instance validity, not an entity-wide assumption.

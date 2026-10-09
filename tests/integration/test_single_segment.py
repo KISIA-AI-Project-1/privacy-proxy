@@ -124,7 +124,20 @@ class SingleSegmentTests(unittest.TestCase):
 
     def test_default_subset_and_producer_boundary(self):
         raw = " | ".join([RRN_VALID, FRN_VALID, PASSPORT, LICENSE_VALID, BRN_VALID])
-        detections = self.service.analyze(raw, "s")
+        from types import SimpleNamespace
+        from unittest.mock import Mock, patch
+
+        ner = SimpleNamespace(labels=("LC",))
+        model = Mock(side_effect=lambda text: SimpleNamespace(text=text, ents=()))
+        model.lang = "ko"
+        model.meta = {"lang": "ko", "name": "core_news_lg", "version": "3.8.0"}
+        model.pipe_names = ["ner"]
+        model.pipe_labels = {"ner": ["LC"]}
+        model.has_pipe.side_effect = lambda name: name == "ner"
+        model.get_pipe.side_effect = lambda name: ner if name == "ner" else None
+
+        with patch("spacy.util.load_model", return_value=model):
+            detections = self.service.analyze(raw, "s")
         self.assertEqual(
             {d.entity_type for d in detections},
             {"KR_RRN", "KR_FRN", "KR_PASSPORT", "KR_DRIVER_LICENSE", "KR_BRN"},
@@ -153,7 +166,20 @@ class SingleSegmentTests(unittest.TestCase):
         self.assertFalse(any(BRN_VALID in message for message in records))
 
     def test_empty_prompt_is_successful_no_detection(self):
-        self.assertEqual(self.service.analyze("", "s"), [])
+        from types import SimpleNamespace
+        from unittest.mock import Mock, patch
+
+        ner = SimpleNamespace(labels=("LC",))
+        model = Mock(side_effect=lambda text: SimpleNamespace(text=text, ents=()))
+        model.lang = "ko"
+        model.meta = {"lang": "ko", "name": "core_news_lg", "version": "3.8.0"}
+        model.pipe_names = ["ner"]
+        model.pipe_labels = {"ner": ["LC"]}
+        model.has_pipe.side_effect = lambda name: name == "ner"
+        model.get_pipe.side_effect = lambda name: ner if name == "ner" else None
+
+        with patch("spacy.util.load_model", return_value=model):
+            self.assertEqual(self.service.analyze("", "s"), [])
 
 
 # Future test boundary (not current expected behavior):

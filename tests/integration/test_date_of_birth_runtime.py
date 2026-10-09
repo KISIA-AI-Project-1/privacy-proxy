@@ -4,6 +4,9 @@ Synthetic fixtures only. These tests verify the canonical L3 service boundary,
 not recognizer-local parsing behavior already covered by the unit suite.
 """
 
+from types import SimpleNamespace
+from unittest.mock import Mock
+
 import pytest
 
 from privacy_proxy.integration.l3_output import L3Output
@@ -31,6 +34,30 @@ FIELDS = (
 @pytest.fixture
 def service() -> L3AnalyzerService:
     return L3AnalyzerService()
+
+
+@pytest.fixture
+def location_dependency_available(monkeypatch):
+    """Controlled LOCATION dependency for default-all service tests."""
+    ner = SimpleNamespace(labels=("LC",))
+    model = Mock(
+        side_effect=lambda text: SimpleNamespace(text=text, ents=()),
+    )
+    model.lang = "ko"
+    model.meta = {
+        "lang": "ko",
+        "name": "core_news_lg",
+        "version": "3.8.0",
+    }
+    model.pipe_names = ["ner"]
+    model.pipe_labels = {"ner": ["LC"]}
+    model.has_pipe.side_effect = lambda name: name == "ner"
+    model.get_pipe.side_effect = lambda name: ner if name == "ner" else None
+
+    loader = Mock(return_value=model)
+    monkeypatch.setattr("spacy.util.load_model", loader)
+
+    return loader
 
 
 def _check_detection(
@@ -163,6 +190,7 @@ def test_registry_exposes_verified_dob_producer(
 
 def test_default_capability_includes_dob(
     service: L3AnalyzerService,
+    location_dependency_available,
 ) -> None:
     raw = "생년월일은 2004-01-02입니다."
 
