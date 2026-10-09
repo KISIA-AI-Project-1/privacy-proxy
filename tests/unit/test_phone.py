@@ -35,7 +35,7 @@ class PhoneUnitTests(unittest.TestCase):
             },
         )
 
-    def test_exact_eleven_and_phone_configuration(self):
+    def test_exact_twelve_and_phone_configuration(self):
         self.assertEqual(
             set(validate_registry(self.registry)),
             {
@@ -50,6 +50,7 @@ class PhoneUnitTests(unittest.TestCase):
                 "AGE_GROUP",
                 "DATE_OF_BIRTH",
                 "LOCATION",
+                "PERSON_EN",
             },
         )
         self.assertIs(type(self.phone), PhoneRecognizer)

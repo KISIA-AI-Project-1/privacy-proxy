@@ -29,10 +29,10 @@ from tests.fixtures import (
 
 
 class RegistryTests(unittest.TestCase):
-    def test_exact_eleven_unique_and_ko(self):
+    def test_exact_twelve_unique_and_ko(self):
         registry = build_registry()
         self.assertEqual(set(validate_registry(registry)), set(SUPPORTED_ENTITIES))
-        self.assertEqual(len(registry.recognizers), 11)
+        self.assertEqual(len(registry.recognizers), 12)
         self.assertEqual(registry.supported_languages, ["ko"])
 
     def test_duplicate_rejected(self):

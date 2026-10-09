@@ -4,7 +4,7 @@ from privacy_proxy.schemas import DetectedPII
 
 from .analyzer_factory import build_analyzer
 from .detection_adapter import adapt_result
-from .registry import SUPPORTED_ENTITIES, validate_registry
+from .registry import DEFAULT_ENTITIES, SUPPORTED_ENTITIES, validate_registry
 from .timeout_guard import L3DependencyTimeoutError, protect_patterns
 
 
@@ -38,7 +38,7 @@ class L3AnalyzerService:
         if language != "ko":
             raise UnsupportedCapabilityError("UNSUPPORTED_LANGUAGE")
         if entities is None:
-            requested = list(SUPPORTED_ENTITIES)
+            requested = list(DEFAULT_ENTITIES)
         else:
             if not isinstance(entities, (list, tuple)) or any(
                 not isinstance(entity, str) for entity in entities

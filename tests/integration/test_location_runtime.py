@@ -72,14 +72,14 @@ def check_detection(detection, raw, surface, producer, segment=SEGMENT):
     L3Output(raw, (detection,))
 
 
-def test_p01_p02_g01_exact_eleven_producers(monkeypatch):
+def test_p01_p02_g01_exact_twelve_producers(monkeypatch):
     controlled_model(monkeypatch, "")
     service = L3AnalyzerService()
     registry = service._analyzer.registry
     producers = validate_registry(registry)
-    assert len(registry.recognizers) == 11
-    assert set(producers) == set(EXISTING_TYPES) | {ENTITY}
-    assert len({producer.id for producer in registry.recognizers}) == 11
+    assert len(registry.recognizers) == 12
+    assert set(producers) == set(EXISTING_TYPES) | {ENTITY, "PERSON_EN"}
+    assert len({producer.id for producer in registry.recognizers}) == 12
     assert registry.supported_languages == ["ko"]
     assert sum(ENTITY in producer.supported_entities for producer in registry.recognizers) == 1
     for entity, cls in EXISTING_TYPES.items():

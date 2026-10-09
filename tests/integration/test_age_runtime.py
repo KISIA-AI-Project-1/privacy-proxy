@@ -72,9 +72,15 @@ def test_real_service_contract_and_shadow(service, raw, surface):
     assert output.detections[0].model_dump() == detections[0].model_dump()
 
 
-def test_eleven_unique_default_capabilities(service):
+def test_twelve_unique_supported_capabilities(service):
     producers = validate_registry(service._analyzer.registry)
-    assert set(producers) == ORIGINAL_ENTITIES | {"AGE", "AGE_GROUP", "DATE_OF_BIRTH", "LOCATION"}
+    assert set(producers) == ORIGINAL_ENTITIES | {
+        "AGE",
+        "AGE_GROUP",
+        "DATE_OF_BIRTH",
+        "LOCATION",
+        "PERSON_EN",
+    }
     assert type(producers["AGE"]) is AgeStatementRecognizer
     assert producers["AGE"].supported_language == "ko"
     assert producers["AGE"].name == "AgeStatementRecognizer"
