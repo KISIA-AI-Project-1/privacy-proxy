@@ -135,10 +135,10 @@ def test_h2_real_runtime_semantics_and_schema(service, case):
 
 
 @pytest.mark.parametrize("raw,expected", [(Z1, Z_EXPECTED[0]), (Z2, Z_EXPECTED[1])])
-@pytest.mark.parametrize("entities", [["AGE"], ["AGE_GROUP"], ["AGE", "AGE_GROUP"], None])
+@pytest.mark.parametrize("entities", [["AGE"], ["AGE_GROUP"], ["AGE", "AGE_GROUP"]])
 def test_z_age_coexistence(service, raw, expected, entities):
     detections = service.analyze(raw, SEGMENT, entities=entities)
-    wanted = sorted(item for item in expected if entities is None or item[0] in entities)
+    wanted = sorted(item for item in expected if item[0] in entities)
     actual = sorted((d.entity_type, d.start_idx, d.end_idx, d.original_value) for d in detections)
     assert actual == wanted
     for d in detections:
@@ -163,10 +163,9 @@ def test_z_no_derived_detection(service, raw, entities):
     assert service.analyze(raw, SEGMENT, entities=entities) == []
 
 
-def test_z_refined_only_and_default_capability(service):
-    for entities in (["AGE", "AGE_GROUP"], None):
-        ds = service.analyze(REFINED, SEGMENT, entities=entities)
-        assert [(d.entity_type, d.start_idx, d.end_idx) for d in ds] == [("AGE_GROUP", 4, 10)]
+def test_z_refined_only_explicit_capability(service):
+    ds = service.analyze(REFINED, SEGMENT, entities=["AGE", "AGE_GROUP"])
+    assert [(d.entity_type, d.start_idx, d.end_idx) for d in ds] == [("AGE_GROUP", 4, 10)]
 
 
 @pytest.mark.parametrize("segment", [SEGMENT, "h2-segment-99", "seg-1"])

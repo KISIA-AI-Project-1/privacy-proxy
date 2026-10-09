@@ -233,6 +233,29 @@ def test_p06_provenance_conflict_rejected_direct_and_service(monkeypatch, key, c
         assert secret not in caplog.text
 
 
+def test_i02_non_location_request_does_not_load_location_dependency(monkeypatch):
+    raw = "audit@example.com"
+    _, loader = controlled_model(monkeypatch, raw)
+    loader.side_effect = OSError(PRIVATE)
+    service = L3AnalyzerService()
+    detections = service.analyze(raw, SEGMENT, entities=["EMAIL_ADDRESS"])
+    assert {d.entity_type for d in detections} == {"EMAIL_ADDRESS"}
+    assert not loader.called
+
+
+def test_d00_default_all_missing_location_dependency_is_fail_closed(monkeypatch, caplog):
+    raw = "나이: 32세"
+    _, loader = controlled_model(monkeypatch, raw)
+    loader.side_effect = OSError(PRIVATE)
+    with pytest.raises(L3RuntimeError) as caught:
+        service = L3AnalyzerService()
+        service.analyze(raw, SEGMENT, entities=None)
+    assert loader.called
+    for secret in (PRIVATE, raw):
+        assert secret not in str(caught.value)
+        assert secret not in caplog.text
+
+
 @pytest.mark.parametrize("failure", ["missing", "load", "inference", "lc_missing"])
 def test_d01_d04_dependency_failure_is_public_runtime_error(monkeypatch, failure, caplog):
     raw = "표본: 경기도"

@@ -78,7 +78,7 @@ def test_eleven_unique_default_capabilities(service):
     assert type(producers["AGE"]) is AgeStatementRecognizer
     assert producers["AGE"].supported_language == "ko"
     assert producers["AGE"].name == "AgeStatementRecognizer"
-    assert len(service.analyze("나이: 32세", "s")) == 1
+    assert len(service.analyze("나이: 32세", "s", entities=["AGE"])) == 1
     assert service.analyze("나이: 32세", "s", entities=[]) == []
     assert service.analyze("나이: 32세", "s", entities=["KR_PASSPORT"]) == []
 
