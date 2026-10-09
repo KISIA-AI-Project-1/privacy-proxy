@@ -15,6 +15,7 @@ from presidio_analyzer.predefined_recognizers import (
 
 from .age_group_recognizer import AgeGroupStatementRecognizer
 from .age_recognizer import AgeStatementRecognizer
+from .date_of_birth_recognizer import DateOfBirthRecognizer
 from .email_validation import configure_email, validate_email_configuration
 
 PRODUCER_TYPES: dict[str, type[Any]] = {
@@ -27,6 +28,7 @@ PRODUCER_TYPES: dict[str, type[Any]] = {
     "EMAIL_ADDRESS": EmailRecognizer,
     "AGE": AgeStatementRecognizer,
     "AGE_GROUP": AgeGroupStatementRecognizer,
+    "DATE_OF_BIRTH": DateOfBirthRecognizer,
 }
 SUPPORTED_ENTITIES = tuple(PRODUCER_TYPES)
 
