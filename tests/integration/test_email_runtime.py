@@ -247,7 +247,20 @@ class EmailIntegrationTests(unittest.TestCase):
     def test_e18_identity_case_preservation_default_capability(self):
         value = "Audit+TAG@Example.COM"
         self.assertEqual(self.detect(value)[0].original_value, value)
-        self.assertEqual(len(self.service.analyze(value, "s")), 1)
+        from types import SimpleNamespace
+        from unittest.mock import Mock, patch
+
+        ner = SimpleNamespace(labels=("LC",))
+        model = Mock(side_effect=lambda text: SimpleNamespace(text=text, ents=()))
+        model.lang = "ko"
+        model.meta = {"lang": "ko", "name": "core_news_lg", "version": "3.8.0"}
+        model.pipe_names = ["ner"]
+        model.pipe_labels = {"ner": ["LC"]}
+        model.has_pipe.side_effect = lambda name: name == "ner"
+        model.get_pipe.side_effect = lambda name: ner if name == "ner" else None
+
+        with patch("spacy.util.load_model", return_value=model):
+            self.assertEqual(len(self.service.analyze(value, "s")), 1)
 
     def test_e19_other_success_before_email_failure_is_atomic(self):
         registry = self.service._analyzer.registry

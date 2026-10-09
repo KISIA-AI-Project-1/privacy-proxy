@@ -116,7 +116,21 @@ class PhoneIntegrationTests(unittest.TestCase):
             self.service.analyze(PHONE, "s", entities=["PHONE_NUMBER"])
 
     def test_p09_default_subset_includes_phone(self):
-        detections = self.detect(PHONE, entities=None)
+        from types import SimpleNamespace
+        from unittest.mock import Mock, patch
+
+        ner = SimpleNamespace(labels=("LC",))
+        model = Mock(side_effect=lambda text: SimpleNamespace(text=text, ents=()))
+        model.lang = "ko"
+        model.meta = {"lang": "ko", "name": "core_news_lg", "version": "3.8.0"}
+        model.pipe_names = ["ner"]
+        model.pipe_labels = {"ner": ["LC"]}
+        model.has_pipe.side_effect = lambda name: name == "ner"
+        model.get_pipe.side_effect = lambda name: ner if name == "ner" else None
+
+        with patch("spacy.util.load_model", return_value=model):
+            detections = self.detect(PHONE, entities=None)
+
         self.assertEqual(len(detections), 1)
         self.assertEqual(detections[0].entity_type, "PHONE_NUMBER")
 
