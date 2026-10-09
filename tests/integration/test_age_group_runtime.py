@@ -58,7 +58,7 @@ ENTITIES = {
     "DATE_OF_BIRTH",
     "LOCATION",
 }
-UNSUPPORTED = ("PERSON_EN", "ADDRESS")
+UNSUPPORTED = ("ADDRESS",)
 ALIASES = ("AGEGROUP", "AGE-GROUP", "age_group", "ageGroup")
 Z1 = "고객은 30대이며 실제 나이는 32세입니다."
 Z2 = "나이: 32세, 연령대: 30대"

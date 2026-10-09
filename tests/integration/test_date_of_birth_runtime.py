@@ -243,5 +243,5 @@ def test_other_unimplemented_capability_remains_unsupported(
         service.analyze(
             "",
             SEGMENT,
-            entities=["PERSON_EN"],
+            entities=["ADDRESS"],
         )

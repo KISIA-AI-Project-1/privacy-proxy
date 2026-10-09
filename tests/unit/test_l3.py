@@ -171,7 +171,7 @@ class ServiceTests(unittest.TestCase):
         self.service = L3AnalyzerService()
 
     def test_unsupported_entity_and_language(self):
-        for entities in [["PERSON_EN"], ["KR_BRN", "PERSON_EN"], "KR_BRN", [None]]:
+        for entities in ["KR_BRN", [None]]:
             with self.assertRaises(UnsupportedCapabilityError):
                 self.service.analyze("", "s", entities=entities)
         with self.assertRaises(UnsupportedCapabilityError):

@@ -116,7 +116,7 @@ class PhoneUnitTests(unittest.TestCase):
 
     def test_other_capabilities_remain_unsupported(self):
         service = L3AnalyzerService()
-        for entity in ("PERSON_EN", "ADDRESS"):
+        for entity in ("ADDRESS",):
             with self.subTest(entity=entity), self.assertRaises(UnsupportedCapabilityError):
                 service.analyze("", "s", entities=[entity])
         with self.assertRaises(UnsupportedCapabilityError):

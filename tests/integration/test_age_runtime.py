@@ -83,7 +83,7 @@ def test_eleven_unique_default_capabilities(service):
     assert service.analyze("나이: 32세", "s", entities=["KR_PASSPORT"]) == []
 
 
-@pytest.mark.parametrize("entity", ["PERSON_EN", "ADDRESS"])
+@pytest.mark.parametrize("entity", ["ADDRESS"])
 def test_other_capabilities_stay_unsupported(service, entity):
     with pytest.raises(UnsupportedCapabilityError):
         service.analyze("", "s", entities=[entity])
