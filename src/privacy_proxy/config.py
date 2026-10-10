@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     demo_mode: bool = False
 
+    audit_s3_enabled: bool = False
+    audit_s3_bucket: str = ""
+    audit_s3_region: str = "ap-northeast-2"
+
 
 @lru_cache
 def get_settings() -> Settings:
