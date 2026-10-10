@@ -17,6 +17,15 @@ def tier_for(
 ) -> DetectionTier:
     if entity not in PRODUCER_TYPES or type(producer) is not PRODUCER_TYPES[entity]:
         raise ProvenanceError("UNVERIFIED_TIER_PRODUCER")
+    if entity == "ADDRESS":
+        # Revalidate the complete emitted surface, never a substring or score.
+        matches = producer.analyze(original_value, ["ADDRESS"])
+        if not any(
+            r.entity_type == "ADDRESS" and r.start == 0 and r.end == len(original_value)
+            for r in matches
+        ):
+            raise ProvenanceError("EMITTED_ADDRESS_STRUCTURE_NOT_PASS")
+        return DetectionTier.RULE_ANCHORED
     if entity == "PERSON_EN":
         # Verified English SpacyRecognizer PERSON evidence, never a score inference.
         return DetectionTier.MODEL

@@ -1,4 +1,4 @@
-"""Twelve exact L3 producers; not the PD-014 source naming registry."""
+"""Thirteen exact L3 producers; not the PD-014 source naming registry."""
 
 from typing import Any, cast
 
@@ -13,6 +13,7 @@ from presidio_analyzer.predefined_recognizers import (
     PhoneRecognizer,
 )
 
+from .address_recognizer import AddressRecognizer
 from .age_group_recognizer import AgeGroupStatementRecognizer
 from .age_recognizer import AgeStatementRecognizer
 from .date_of_birth_recognizer import DateOfBirthRecognizer
@@ -33,9 +34,11 @@ PRODUCER_TYPES: dict[str, type[Any]] = {
     "DATE_OF_BIRTH": DateOfBirthRecognizer,
     "LOCATION": LocationRecognizer,
     "PERSON_EN": PersonEnRecognizer,
+    "ADDRESS": AddressRecognizer,
 }
 SUPPORTED_ENTITIES = tuple(PRODUCER_TYPES)
 # R6-S6: PERSON_EN is included in the default surface by adjudicated policy.
+# R7 phase 1: ADDRESS is available only through explicit requests.
 DEFAULT_ENTITIES = SUPPORTED_ENTITIES
 
 

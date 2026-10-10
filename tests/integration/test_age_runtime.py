@@ -72,7 +72,7 @@ def test_real_service_contract_and_shadow(service, raw, surface):
     assert output.detections[0].model_dump() == detections[0].model_dump()
 
 
-def test_twelve_unique_supported_capabilities(service):
+def test_thirteen_unique_supported_capabilities(service):
     producers = validate_registry(service._analyzer.registry)
     assert set(producers) == ORIGINAL_ENTITIES | {
         "AGE",
@@ -80,6 +80,7 @@ def test_twelve_unique_supported_capabilities(service):
         "DATE_OF_BIRTH",
         "LOCATION",
         "PERSON_EN",
+        "ADDRESS",
     }
     assert type(producers["AGE"]) is AgeStatementRecognizer
     assert producers["AGE"].supported_language == "ko"
@@ -89,7 +90,7 @@ def test_twelve_unique_supported_capabilities(service):
     assert service.analyze("나이: 32세", "s", entities=["KR_PASSPORT"]) == []
 
 
-@pytest.mark.parametrize("entity", ["ADDRESS"])
+@pytest.mark.parametrize("entity", ["ADDRESS_ROAD"])
 def test_other_capabilities_stay_unsupported(service, entity):
     with pytest.raises(UnsupportedCapabilityError):
         service.analyze("", "s", entities=[entity])

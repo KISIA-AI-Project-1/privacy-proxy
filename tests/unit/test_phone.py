@@ -35,7 +35,7 @@ class PhoneUnitTests(unittest.TestCase):
             },
         )
 
-    def test_exact_twelve_and_phone_configuration(self):
+    def test_exact_thirteen_and_phone_configuration(self):
         self.assertEqual(
             set(validate_registry(self.registry)),
             {
@@ -51,6 +51,7 @@ class PhoneUnitTests(unittest.TestCase):
                 "DATE_OF_BIRTH",
                 "LOCATION",
                 "PERSON_EN",
+                "ADDRESS",
             },
         )
         self.assertIs(type(self.phone), PhoneRecognizer)
@@ -117,7 +118,7 @@ class PhoneUnitTests(unittest.TestCase):
 
     def test_other_capabilities_remain_unsupported(self):
         service = L3AnalyzerService()
-        for entity in ("ADDRESS",):
+        for entity in ("ADDRESS_ROAD",):
             with self.subTest(entity=entity), self.assertRaises(UnsupportedCapabilityError):
                 service.analyze("", "s", entities=[entity])
         with self.assertRaises(UnsupportedCapabilityError):
