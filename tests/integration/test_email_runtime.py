@@ -259,7 +259,13 @@ class EmailIntegrationTests(unittest.TestCase):
         model.has_pipe.side_effect = lambda name: name == "ner"
         model.get_pipe.side_effect = lambda name: ner if name == "ner" else None
 
-        with patch("spacy.util.load_model", return_value=model):
+        with (
+            patch("spacy.util.load_model", return_value=model),
+            patch(
+                "privacy_proxy.l3.person_en_recognizer.PersonEnRecognizer.analyze",
+                return_value=[],
+            ),
+        ):
             self.assertEqual(len(self.service.analyze(value, "s")), 1)
 
     def test_e19_other_success_before_email_failure_is_atomic(self):

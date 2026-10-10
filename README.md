@@ -154,8 +154,13 @@ L3·L4 탐지 작업자는 모델 의존성(torch, spaCy, transformers)을 추�
 용량이 커서 기본 설치에서 빼뒀다.
 
 ```bash
-uv sync --extra detection
+uv sync --extra detection --frozen
 ```
+
+`detection` extra는 L3 탐지 모델 실행 계약에 맞춰
+`spaCy==3.8.16`, `ko_core_news_lg==3.8.0`, `en_core_web_lg==3.8.0`을 함께 설치한다.
+LOCATION과 PERSON_EN 모델은 고정된 spaCy Models release wheel을 사용한다.
+런타임 자동 다운로드와 별도의 수동 모델 설치는 필요하지 않다.
 
 `.env`에 채울 값: `PROXY_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `REDIS_URL`, `VAULT_ENCRYPTION_KEY`, `LOG_LEVEL`. **`.env`는 커밋하지 않는다.**
 

@@ -1114,6 +1114,14 @@ wheels = [
 ]
 
 [[package]]
+name = "en-core-web-lg"
+version = "3.8.0"
+source = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.8.0/en_core_web_lg-3.8.0-py3-none-any.whl" }
+wheels = [
+    { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.8.0/en_core_web_lg-3.8.0-py3-none-any.whl", hash = "sha256:293e9547a655b25499198ab15a525b05b9407a75f10255e405e8c3854329ab63" },
+]
+
+[[package]]
 name = "fastapi"
 version = "0.141.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1634,6 +1642,14 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/f4/ce/a7dc71353dd06a4cbe02222773f52d4a28c81e5a452a75797f8ed113dc99/kiwisolver-1.5.1-pp311-pypy311_pp73-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:5daa1f19e097050b9c4d9a78fcc9263cb96c9dfae08037ddc1b7c4ad1889f2a2", size = 79891, upload-time = "2026-08-28T10:28:22.936Z" },
     { url = "https://files.pythonhosted.org/packages/10/b1/d61c61a84ff85d1a36a99df2c152b59ffedb1d356c598902aba44abcdb60/kiwisolver-1.5.1-pp311-pypy311_pp73-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:cdaeeb6c350106df6bf9d873395973e5f066a9713200b72cd64f55d0a3eafab6", size = 77605, upload-time = "2026-08-28T10:28:24.322Z" },
     { url = "https://files.pythonhosted.org/packages/d3/52/5aef56f21a460a6e43ab3cdfc7697d59d7b87deb0ec97a0f7b91aa4a521b/kiwisolver-1.5.1-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:17851e5dad4484be0cbccbde3b15331deae036de9aebd45eed964487802b172f", size = 98465, upload-time = "2026-08-28T10:28:25.696Z" },
+]
+
+[[package]]
+name = "ko-core-news-lg"
+version = "3.8.0"
+source = { url = "https://github.com/explosion/spacy-models/releases/download/ko_core_news_lg-3.8.0/ko_core_news_lg-3.8.0-py3-none-any.whl" }
+wheels = [
+    { url = "https://github.com/explosion/spacy-models/releases/download/ko_core_news_lg-3.8.0/ko_core_news_lg-3.8.0-py3-none-any.whl", hash = "sha256:f703b419511ebbbe2812728708fb2dac8a6ed767871a18e87e29ce9444ead3d3" },
 ]
 
 [[package]]
@@ -2740,6 +2756,8 @@ dependencies = [
 
 [package.optional-dependencies]
 detection = [
+    { name = "en-core-web-lg" },
+    { name = "ko-core-news-lg" },
     { name = "presidio-analyzer" },
     { name = "presidio-anonymizer" },
     { name = "spacy" },
@@ -2778,8 +2796,10 @@ requires-dist = [
     { name = "boto3", specifier = ">=1.34" },
     { name = "cryptography", specifier = ">=44.0" },
     { name = "datasets", marker = "extra == 'training'", specifier = ">=3.2" },
+    { name = "en-core-web-lg", marker = "extra == 'detection'", url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.8.0/en_core_web_lg-3.8.0-py3-none-any.whl" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.28" },
+    { name = "ko-core-news-lg", marker = "extra == 'detection'", url = "https://github.com/explosion/spacy-models/releases/download/ko_core_news_lg-3.8.0/ko_core_news_lg-3.8.0-py3-none-any.whl" },
     { name = "matplotlib", marker = "extra == 'training'", specifier = ">=3.10" },
     { name = "pandas", marker = "extra == 'training'", specifier = ">=2.2" },
     { name = "phonenumbers", specifier = ">=9.0" },
@@ -2791,7 +2811,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.7" },
     { name = "redis", specifier = ">=5.2" },
     { name = "seqeval", marker = "extra == 'training'", specifier = ">=1.2" },
-    { name = "spacy", marker = "extra == 'detection'", specifier = ">=3.8" },
+    { name = "spacy", marker = "extra == 'detection'", specifier = "==3.8.16" },
     { name = "spacy", marker = "extra == 'detection-lite'", specifier = ">=3.8" },
     { name = "torch", marker = "extra == 'detection'", specifier = ">=2.5" },
     { name = "torch", marker = "extra == 'training'", specifier = ">=2.5" },

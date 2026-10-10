@@ -54,8 +54,17 @@ def location_dependency_available(monkeypatch):
     model.has_pipe.side_effect = lambda name: name == "ner"
     model.get_pipe.side_effect = lambda name: ner if name == "ner" else None
 
-    loader = Mock(return_value=model)
-    monkeypatch.setattr("spacy.util.load_model", loader)
+    from spacy import util as spacy_util
+
+    original_load_model = spacy_util.load_model
+
+    def routed_load_model(name, *args, **kwargs):
+        if name == "ko_core_news_lg":
+            return model
+        return original_load_model(name, *args, **kwargs)
+
+    loader = Mock(side_effect=routed_load_model)
+    monkeypatch.setattr(spacy_util, "load_model", loader)
 
     return loader
 
@@ -243,5 +252,5 @@ def test_other_unimplemented_capability_remains_unsupported(
         service.analyze(
             "",
             SEGMENT,
-            entities=["PERSON_EN"],
+            entities=["ADDRESS"],
         )

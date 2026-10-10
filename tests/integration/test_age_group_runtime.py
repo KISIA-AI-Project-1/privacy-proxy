@@ -58,7 +58,7 @@ ENTITIES = {
     "DATE_OF_BIRTH",
     "LOCATION",
 }
-UNSUPPORTED = ("PERSON_EN", "ADDRESS")
+UNSUPPORTED = ("ADDRESS",)
 ALIASES = ("AGEGROUP", "AGE-GROUP", "age_group", "ageGroup")
 Z1 = "고객은 30대이며 실제 나이는 32세입니다."
 Z2 = "나이: 32세, 연령대: 30대"
@@ -287,18 +287,18 @@ def test_ab_language_and_input_contracts(service):
             service.analyze(RAW, SEGMENT, entities=entities)
 
 
-def test_ac_exact_eleven_registry(service):
+def test_ac_exact_twelve_registry(service):
     registry = service._analyzer.registry
     producers = validate_registry(registry)
-    assert len(registry.recognizers) == 11
-    assert set(producers) == ENTITIES
+    assert len(registry.recognizers) == 12
+    assert set(producers) == ENTITIES | {"PERSON_EN"}
     assert registry.supported_languages == ["ko"]
     p = producers["AGE_GROUP"]
     assert type(p) is AgeGroupStatementRecognizer
     assert p.supported_entities == ["AGE_GROUP"]
     assert p.supported_language == "ko"
     assert p.name == "AgeGroupStatementRecognizer"
-    assert len({p.id for p in producers.values()}) == 11
+    assert len({p.id for p in producers.values()}) == 12
     assert len(service.analyze(RAW, SEGMENT, entities=["AGE_GROUP"])) == 1
 
 

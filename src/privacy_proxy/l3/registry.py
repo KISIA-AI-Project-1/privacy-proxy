@@ -1,4 +1,4 @@
-"""Eleven exact L3 producers; not the PD-014 source naming registry."""
+"""Twelve exact L3 producers; not the PD-014 source naming registry."""
 
 from typing import Any, cast
 
@@ -18,6 +18,7 @@ from .age_recognizer import AgeStatementRecognizer
 from .date_of_birth_recognizer import DateOfBirthRecognizer
 from .email_validation import configure_email, validate_email_configuration
 from .location_recognizer import LocationRecognizer
+from .person_en_recognizer import PersonEnRecognizer
 
 PRODUCER_TYPES: dict[str, type[Any]] = {
     "KR_RRN": KrRrnRecognizer,
@@ -31,8 +32,11 @@ PRODUCER_TYPES: dict[str, type[Any]] = {
     "AGE_GROUP": AgeGroupStatementRecognizer,
     "DATE_OF_BIRTH": DateOfBirthRecognizer,
     "LOCATION": LocationRecognizer,
+    "PERSON_EN": PersonEnRecognizer,
 }
 SUPPORTED_ENTITIES = tuple(PRODUCER_TYPES)
+# R6-S6: PERSON_EN is included in the default surface by adjudicated policy.
+DEFAULT_ENTITIES = SUPPORTED_ENTITIES
 
 
 class RegistryConfigurationError(RuntimeError):

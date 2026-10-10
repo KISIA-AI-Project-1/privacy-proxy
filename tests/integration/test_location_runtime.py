@@ -72,14 +72,14 @@ def check_detection(detection, raw, surface, producer, segment=SEGMENT):
     L3Output(raw, (detection,))
 
 
-def test_p01_p02_g01_exact_eleven_producers(monkeypatch):
+def test_p01_p02_g01_exact_twelve_producers(monkeypatch):
     controlled_model(monkeypatch, "")
     service = L3AnalyzerService()
     registry = service._analyzer.registry
     producers = validate_registry(registry)
-    assert len(registry.recognizers) == 11
-    assert set(producers) == set(EXISTING_TYPES) | {ENTITY}
-    assert len({producer.id for producer in registry.recognizers}) == 11
+    assert len(registry.recognizers) == 12
+    assert set(producers) == set(EXISTING_TYPES) | {ENTITY, "PERSON_EN"}
+    assert len({producer.id for producer in registry.recognizers}) == 12
     assert registry.supported_languages == ["ko"]
     assert sum(ENTITY in producer.supported_entities for producer in registry.recognizers) == 1
     for entity, cls in EXISTING_TYPES.items():
@@ -188,6 +188,10 @@ def test_m01_service_lc_only(monkeypatch, label):
 def test_i01_i02_i03_requested_isolation_and_mixed_entities(monkeypatch, requested):
     raw = "표본: 경기도에. audit@example.com " + PASSPORT
     controlled_model(monkeypatch, raw, [candidate(raw, "경기도에")])
+    monkeypatch.setattr(
+        "privacy_proxy.l3.person_en_recognizer.PersonEnRecognizer.analyze",
+        lambda self, text, entities, nlp_artifacts=None: [],
+    )
     service = L3AnalyzerService()
     detections = service.analyze(raw, SEGMENT, entities=requested)
     wanted = {ENTITY, "EMAIL_ADDRESS", "KR_PASSPORT"} if requested is None else set(requested)

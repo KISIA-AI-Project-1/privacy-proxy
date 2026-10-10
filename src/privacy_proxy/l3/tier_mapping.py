@@ -17,6 +17,9 @@ def tier_for(
 ) -> DetectionTier:
     if entity not in PRODUCER_TYPES or type(producer) is not PRODUCER_TYPES[entity]:
         raise ProvenanceError("UNVERIFIED_TIER_PRODUCER")
+    if entity == "PERSON_EN":
+        # Verified English SpacyRecognizer PERSON evidence, never a score inference.
+        return DetectionTier.MODEL
     if entity == "LOCATION":
         # Exact producer identity was verified above; LC model evidence remains
         # MODEL after R01/R02 refinement, independently of numeric scores.
