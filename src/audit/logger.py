@@ -3,8 +3,10 @@ import json
 import logging
 from collections.abc import AsyncGenerator, AsyncIterable
 from datetime import UTC, datetime
-from typing import cast
+from typing import Any, cast
 
+from audit.s3_sink import upload_audit_metadata
+from privacy_proxy.config import get_settings
 from privacy_proxy.schemas import ProxyContext
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -38,10 +40,24 @@ _SAFE_ERROR_CODES = frozenset(
 )
 
 
+async def _write_audit_log(context: ProxyContext) -> None:
+    """콘솔 기록 후, 설정에 따라 안전한 메타데이터를 S3에 저장한다."""
+    metadata = _print_log(context)
+
+    if not get_settings().audit_s3_enabled:
+        return
+
+    try:
+        await asyncio.to_thread(upload_audit_metadata, metadata)
+    except Exception:
+        # 예외 내용에 개인정보나 인증 정보가 포함될 수 있어 출력하지 않는다.
+        logger.error("L9_S3_UPLOAD_FAILED")
+
+
 async def audit_log_l9(context: ProxyContext) -> ProxyContext:
     """L9: 응답 스트림이 종료된 후 감사 로그를 기록한다."""
     if context.status != "success" or context.final_response is None:
-        _print_log(context)
+        await _write_audit_log(context)
         return context
 
     async def _logging_stream_wrapper(
@@ -84,7 +100,7 @@ async def audit_log_l9(context: ProxyContext) -> ProxyContext:
                 2,
             )
 
-            _print_log(context)
+            await _write_audit_log(context)
 
     original_stream = cast(
         AsyncIterable[str],
@@ -95,8 +111,8 @@ async def audit_log_l9(context: ProxyContext) -> ProxyContext:
     return context
 
 
-def _print_log(context: ProxyContext) -> None:
-    """허용한 운영 메타데이터만 감사 로그에 기록한다.
+def _print_log(context: ProxyContext) -> dict[str, Any]:
+    """허용한 운영 메타데이터만 감사 로그에 기록하고 반환한다.
 
     원문, 탐지 값, 복원 매핑, 재조립 요청과 복원 응답은
     감사 로그에 포함하지 않는다.
@@ -106,7 +122,7 @@ def _print_log(context: ProxyContext) -> None:
     if error_code is not None and error_code not in _SAFE_ERROR_CODES:
         error_code = "UNCLASSIFIED_FAILURE"
 
-    safe_log_data = {
+    safe_log_data: dict[str, Any] = {
         "session_id": context.session_id,
         "created_at": context.created_at,
         "status": context.status,
@@ -114,7 +130,7 @@ def _print_log(context: ProxyContext) -> None:
         "risk_score": context.risk_score,
         "risk_level": context.risk_level,
         "policy_action": context.policy_action,
-        "latency_ms": context.latency_ms,
+        "latency_ms": dict(context.latency_ms),
     }
 
     separator = "=" * 50
@@ -140,3 +156,5 @@ def _print_log(context: ProxyContext) -> None:
         json.dumps(safe_log_data, indent=2, ensure_ascii=False),
     )
     logger.info("%s\n", separator)
+
+    return safe_log_data
