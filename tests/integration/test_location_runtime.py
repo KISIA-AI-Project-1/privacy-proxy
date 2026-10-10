@@ -188,6 +188,10 @@ def test_m01_service_lc_only(monkeypatch, label):
 def test_i01_i02_i03_requested_isolation_and_mixed_entities(monkeypatch, requested):
     raw = "표본: 경기도에. audit@example.com " + PASSPORT
     controlled_model(monkeypatch, raw, [candidate(raw, "경기도에")])
+    monkeypatch.setattr(
+        "privacy_proxy.l3.person_en_recognizer.PersonEnRecognizer.analyze",
+        lambda self, text, entities, nlp_artifacts=None: [],
+    )
     service = L3AnalyzerService()
     detections = service.analyze(raw, SEGMENT, entities=requested)
     wanted = {ENTITY, "EMAIL_ADDRESS", "KR_PASSPORT"} if requested is None else set(requested)

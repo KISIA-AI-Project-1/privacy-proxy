@@ -35,8 +35,8 @@ PRODUCER_TYPES: dict[str, type[Any]] = {
     "PERSON_EN": PersonEnRecognizer,
 }
 SUPPORTED_ENTITIES = tuple(PRODUCER_TYPES)
-# Preserve the pre-PERSON_EN default surface until R6-S6 adjudicates widening.
-DEFAULT_ENTITIES = tuple(entity for entity in SUPPORTED_ENTITIES if entity != "PERSON_EN")
+# R6-S6: PERSON_EN is included in the default surface by adjudicated policy.
+DEFAULT_ENTITIES = SUPPORTED_ENTITIES
 
 
 class RegistryConfigurationError(RuntimeError):

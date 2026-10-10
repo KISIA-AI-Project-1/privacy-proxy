@@ -128,7 +128,13 @@ class PhoneIntegrationTests(unittest.TestCase):
         model.has_pipe.side_effect = lambda name: name == "ner"
         model.get_pipe.side_effect = lambda name: ner if name == "ner" else None
 
-        with patch("spacy.util.load_model", return_value=model):
+        with (
+            patch("spacy.util.load_model", return_value=model),
+            patch(
+                "privacy_proxy.l3.person_en_recognizer.PersonEnRecognizer.analyze",
+                return_value=[],
+            ),
+        ):
             detections = self.detect(PHONE, entities=None)
 
         self.assertEqual(len(detections), 1)
