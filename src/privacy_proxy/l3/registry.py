@@ -6,7 +6,6 @@ from presidio_analyzer import RecognizerRegistry
 from presidio_analyzer.predefined_recognizers import (
     EmailRecognizer,
     KrBrnRecognizer,
-    KrDriverLicenseRecognizer,
     KrFrnRecognizer,
     KrPassportRecognizer,
     KrRrnRecognizer,
@@ -17,6 +16,7 @@ from .address_recognizer import AddressRecognizer
 from .age_group_recognizer import AgeGroupStatementRecognizer
 from .age_recognizer import AgeStatementRecognizer
 from .date_of_birth_recognizer import DateOfBirthRecognizer
+from .driver_license_recognizer import KrDriverLicenseRecognizer
 from .email_validation import configure_email, validate_email_configuration
 from .location_recognizer import LocationRecognizer
 from .person_en_recognizer import PersonEnRecognizer
