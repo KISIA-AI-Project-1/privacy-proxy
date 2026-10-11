@@ -27,8 +27,8 @@ PATTERNS: dict[str, re.Pattern[str]] = {
     "CUSTOMER_ID": re.compile(_L + r"[A-Za-z]{0,4}[-_]?\d{4,15}" + _R),
 }
 
-# 다른 확정 타입(L3 담당)과 형식이 겹치는 후보는 우리 것이 아니다. 전화번호는
-# 정규식 대신 phonenumbers로 판별한다(recognizers.py의 _is_phone_number) —
+# 다른 확정 타입(L3 담당)과 형식이 겹치는 후보는 우리 것이 아니다. 전화번호·이메일은
+# 정규식 대신 L3와 같은 설정의 인식기로 판별한다(recognizers.py의 _l3_spans) —
 # 자릿수만으로는 우리 ID들과 안전하게 못 갈라서다. 생년월일(YYMMDD) 검증까지
 # 해서 "999999-1234567"처럼 월/일이 무효한 건 주민등록번호가 아니라고 정확히
 # 판별한다.
@@ -40,13 +40,6 @@ EXCLUDE_PATTERNS: list[re.Pattern[str]] = [
     # 사업자등록번호: 하이픈 포함/미포함 둘 다. 미포함 10자리는 임의의 숫자와
     # 구분이 안 돼 recall이 깎이지만 L3가 확정한 실제 형식이라 그대로 쓴다.
     re.compile(r"(?<!\d)\d{3}-\d{2}-\d{5}(?!\d)|(?<!\d)\d{10}(?!\d)"),
-    # 이메일: L3 담당 타입이 아니라 순수 오탐 방지용. ID 패턴들의 ASCII 경계
-    # 규칙이 '@'/'.'/'-'를 전부 비영숫자로 쳐서, 이메일 안의 라벨 하나하나
-    # (로컬파트, 도메인, TLD)가 독립된 후보로 오탐될 수 있다(예:
-    # "sjpark@corp-solution.co.kr"의 "solution"이 TRACKING_NUMBER와 우연히
-    # 일치). TLD를 {2,}로 열어둔 건 ".solutions"처럼 긴 TLD도 도메인 전체를
-    # 한 번에 삼켜야 라벨이 안 쪼개지기 때문이다.
-    re.compile(r"(?<![A-Za-z0-9])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?![A-Za-z0-9])"),
 ]
 
 # ORDER_ID 전용: 순수 날짜(YYYYMMDD 등, 뒤에 -숫자 없음)는 배제한다.
