@@ -9,6 +9,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from hashlib import sha256
 from importlib import metadata, resources
+from types import MethodType
 from typing import Any, cast
 
 import regex
@@ -21,6 +22,129 @@ from .timeout_guard import TimeoutCallable, protect_callable
 BUNDLED_SHA256 = "B69315C085D53972724B8F2DF111FFC329B0C84FE0A47D62C8C91655CC774A38"
 
 VERSIONS = (("presidio-analyzer", "2.2.364"), ("tldextract", "5.3.2"), ("regex", "2026.9.3"))
+
+# Explicit field labels may be attached directly to an ASCII-looking email
+# in Korean prose, e.g. an attached label before "audit@example.com".
+#
+# Presidio's built-in EMAIL local-part uses Unicode \w, so the label can be
+# consumed as part of the address. Keep general Unicode local-parts intact;
+# correction is allowed only when an approved field label is followed by an
+# independently valid email whose local-part starts with an ASCII email char.
+_EMAIL_LEFT_LABELS = ("\uc774\uba54\uc77c", "\uba54\uc77c")
+
+# Keep this deliberately narrow. Additional Korean connective contexts require
+# separate evidence before being admitted to the correction surface.
+_EMAIL_LEFT_CONNECTORS = ("\uc774\uace0",)
+
+_ASCII_EMAIL_START = regex.compile(r"[A-Za-z0-9!#$%&'*+\-/=?^_`{|}~]")
+
+
+def _has_email_left_label_boundary(
+    candidate: str,
+    position: int,
+) -> bool:
+    if position == 0:
+        return True
+
+    prefix = candidate[:position]
+
+    return any(prefix.endswith(connector) for connector in _EMAIL_LEFT_CONNECTORS)
+
+
+def _correct_email_left_boundary(
+    producer: EmailRecognizer,
+    text: str,
+    start: int,
+    end: int,
+) -> int:
+    candidate = text[start:end]
+    base_analyze = getattr(producer, "_email_base_analyze", None)
+
+    if not callable(base_analyze):
+        raise EmailConfigurationError("EMAIL_ANALYZE_CONFIGURATION")
+
+    corrected: int | None = None
+
+    for label in _EMAIL_LEFT_LABELS:
+        search_end = len(candidate)
+
+        while search_end > 0:
+            position = candidate.rfind(label, 0, search_end)
+
+            if position < 0:
+                break
+
+            if not _has_email_left_label_boundary(
+                candidate,
+                position,
+            ):
+                search_end = position
+                continue
+
+            tail_start = position + len(label)
+            tail = candidate[tail_start:]
+
+            if tail and _ASCII_EMAIL_START.fullmatch(tail[0]) is not None:
+                tail_results = base_analyze(
+                    text=tail,
+                    entities=["EMAIL_ADDRESS"],
+                )
+
+                if (
+                    len(tail_results) == 1
+                    and tail_results[0].start == 0
+                    and tail_results[0].end == len(tail)
+                ):
+                    absolute = start + tail_start
+
+                    if corrected is None or absolute > corrected:
+                        corrected = absolute
+
+                    break
+
+            search_end = position
+
+    return start if corrected is None else corrected
+
+
+def _analyze_email_with_left_boundary(
+    producer: EmailRecognizer,
+    text: str,
+    entities: list[str],
+    nlp_artifacts: Any = None,
+    regex_flags: int | None = None,
+) -> list[Any]:
+    base_analyze = getattr(producer, "_email_base_analyze", None)
+
+    if not callable(base_analyze):
+        raise EmailConfigurationError("EMAIL_ANALYZE_CONFIGURATION")
+
+    kwargs: dict[str, Any] = {
+        "text": text,
+        "entities": entities,
+    }
+
+    if nlp_artifacts is not None:
+        kwargs["nlp_artifacts"] = nlp_artifacts
+
+    if regex_flags is not None:
+        kwargs["regex_flags"] = regex_flags
+
+    results = cast(list[Any], base_analyze(**kwargs))
+
+    for result in results:
+        corrected_start = _correct_email_left_boundary(
+            producer,
+            text,
+            result.start,
+            result.end,
+        )
+
+        if corrected_start != result.start:
+            result.start = corrected_start
+
+    return results
+
 
 # Keep the built-in Unicode-domain pattern intact. It can consume attached
 # Hangul into a candidate whose suffix validation fails. This additional
@@ -127,11 +251,15 @@ def validate_email_configuration(
 ) -> None:
     validator = getattr(producer, "_email_validation", None)
     guard = producer.validate_result
+    analyze = producer.analyze
+    base_analyze = getattr(producer, "_email_base_analyze", None)
     if (
         type(producer) is not EmailRecognizer
         or type(validator) is not _EmailValidation
         or type(guard) is not TimeoutCallable
         or guard.callback is not validator
+        or not callable(base_analyze)
+        or getattr(analyze, "__func__", None) is not _analyze_email_with_left_boundary
     ):
         raise EmailConfigurationError("EMAIL_VALIDATOR_CONFIGURATION")
     validator.check()
@@ -178,4 +306,9 @@ def configure_email(
     dynamic_producer.patterns = _configured_patterns(validator._korean_suffix_pattern)
     dynamic_producer._email_validation = validator
     dynamic_producer.validate_result = protect_callable(validator)
+    dynamic_producer._email_base_analyze = producer.analyze
+    dynamic_producer.analyze = MethodType(
+        _analyze_email_with_left_boundary,
+        producer,
+    )
     validate_email_configuration(producer)
