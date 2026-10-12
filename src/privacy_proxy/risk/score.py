@@ -1,12 +1,13 @@
 """Risk score, level, and L6 policy selection for pipeline layer L5."""
 
 from time import perf_counter
+from typing import Literal
 
 from privacy_proxy.risk.combination import combination_score, select_representative_qis
 from privacy_proxy.risk.entity_contract import L5_SUPPORTED_ENTITY_TYPES
 from privacy_proxy.risk.quasi_identifiers import PrivacyClass, privacy_class
 from privacy_proxy.risk.resolver import resolve_overlaps
-from privacy_proxy.schemas import ProxyContext
+from privacy_proxy.schemas import DetectedPII, EntityPolicy, ProxyContext
 
 LOW_MAX = 30.0
 MEDIUM_MAX = 60.0
@@ -26,6 +27,53 @@ def _level(score: float) -> str:
 def _append_once(items: list[str], value: str) -> None:
     if value not in items:
         items.append(value)
+
+
+_PROTECTED_REASON = {
+    PrivacyClass.DIRECT: "직접식별자: 가역 토큰화",
+    PrivacyClass.SERVICE: "서비스 식별자: 가역 토큰화",
+    PrivacyClass.SENSITIVE: "민감정보: 점수와 무관하게 토큰화",
+}
+PURCHASE_PATTERN_RETENTION_REASON = (
+    "구매 패턴(PURCHASE_PATTERN)은 위험 점수에 반영되지만 업무상 유지 정보라 치환하지 않음"
+)
+
+
+def _entity_policies(
+    classes: list[tuple[DetectedPII, PrivacyClass]], qi_score: float
+) -> list[EntityPolicy]:
+    """Separate item actions from request risk; retain purchase patterns always."""
+    qi_level = _level(qi_score)
+    policies: list[EntityPolicy] = []
+    for entity, kind in classes:
+        action: Literal["TOKENIZE", "GENERALIZE", "ALLOW"]
+        if entity.entity_type == "PURCHASE_PATTERN":
+            action = "ALLOW"
+            reason = "업무상 유지 정보(점수 반영)"
+        elif kind in _PROTECTED_REASON:
+            action = "TOKENIZE"
+            reason = _PROTECTED_REASON[kind]
+        elif kind is PrivacyClass.QI and qi_level in {"MEDIUM", "HIGH"}:
+            action = "GENERALIZE"
+            reason = f"준식별자 조합 위험 {qi_score:g}점({qi_level}): 일반화"
+        elif kind is PrivacyClass.QI:
+            action = "ALLOW"
+            reason = f"준식별자 조합 위험 {qi_score:g}점({qi_level}): 업무상 유지"
+        else:
+            action = "ALLOW"
+            reason = "보호 대상 아님"
+        policies.append(
+            EntityPolicy(
+                segment_id=entity.segment_id,
+                start_idx=entity.start_idx,
+                end_idx=entity.end_idx,
+                entity_type=str(entity.entity_type),
+                privacy_class=kind.value,
+                action=action,
+                reason=reason,
+            )
+        )
+    return policies
 
 
 def assess_risk(context: ProxyContext) -> ProxyContext:
@@ -51,6 +99,9 @@ def assess_risk(context: ProxyContext) -> ProxyContext:
     bonus, combination_reasons = combination_score(features)
     score += bonus
     reasons.extend(combination_reasons)
+    qi_score = min(100.0, round(score, 2))
+    if any(entity.entity_type == "PURCHASE_PATTERN" for entity, _ in classes):
+        _append_once(reasons, PURCHASE_PATTERN_RETENTION_REASON)
 
     direct = [entity for entity, kind in classes if kind is PrivacyClass.DIRECT]
     service = [entity for entity, kind in classes if kind is PrivacyClass.SERVICE]
@@ -90,5 +141,6 @@ def assess_risk(context: ProxyContext) -> ProxyContext:
     context.risk_level = level
     context.risk_reasons = list(dict.fromkeys(reasons))
     context.policy_action = action
+    context.entity_policies = _entity_policies(classes, qi_score)
     context.latency_ms["L5"] = round((perf_counter() - started) * 1000, 3)
     return context

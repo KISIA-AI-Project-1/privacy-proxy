@@ -18,7 +18,7 @@ Strategy:
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
@@ -84,6 +84,13 @@ POLICY_SPECS: dict[str, dict[str, EntitySpec]] = {
     "LOCATION_INFORMAL": {"TOKENIZE": _tok("LOCATION"), "GENERALIZE": _tok("LOCATION")},
     "AGE": {"TOKENIZE": _tok("AGE"), "GENERALIZE": _gen("age")},
     "AGE_GROUP": {"TOKENIZE": _tok("AGE_GROUP")},  # 이미 대략적 값이라 GENERALIZE 는 통과
+    # 상품은 "상품명 일괄 마스킹 안 함" 원칙에 따라
+    # GENERALIZE/ALLOW 면 통과시키고, TOKENIZE 일 때만 가린다. 상품 범주 일반화
+    # (예: "탈모 샴푸" → "헤어케어 제품")는 범주 사전이 생기면 _gen 으로 교체.
+    # 규칙이 아예 없으면 strict 모드에서 L6 전체가 실패한다.
+    "PRODUCT_ITEM": {"TOKENIZE": _tok("PRODUCT")},
+    # 업무상 유지 정보: 모든 요청·항목별 정책에서 원문 통과.
+    "PURCHASE_PATTERN": {},
 }
 
 _NAMESPACE_OVERRIDES = {"PERSON_KO": "PERSON", "PERSON_EN": "PERSON"}
@@ -322,7 +329,13 @@ class Tokenizer:
         detected_entities: list[Any],
         policy_action: str
         | None = None,  # L5 의 요청 전체 보호 정책 (TOKENIZE / GENERALIZE / 그 외)
+        entity_actions: Mapping[tuple[str, int, int], str] | None = None,
     ) -> TokenizationResult:
+        """entity_actions: L5 항목별 정책. 키는 (segment_id, start_idx, end_idx).
+
+        항목별 값이 있으면 그것을, 없으면 요청 단위 policy_action 을 쓴다.
+        직접식별자(BASE_SPECS)는 어느 쪽이든 항상 가역 치환한다.
+        """
         vault_mapping: dict[str, str] = {}
         token_types: dict[str, str] = {}
         placements: dict[str, int] = {}
@@ -347,7 +360,11 @@ class Tokenizer:
                 skipped.append(entity_type)
                 continue
 
-            spec = resolve_spec(entity_type, policy_action)
+            action = policy_action
+            if entity_actions is not None:
+                key = (getattr(e, "segment_id", "seg-1"), start, end)
+                action = entity_actions.get(key, policy_action)
+            spec = resolve_spec(entity_type, action)
             if spec is None:
                 passthrough.append(entity_type)
                 continue
