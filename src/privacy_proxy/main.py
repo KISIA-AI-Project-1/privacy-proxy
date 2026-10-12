@@ -190,6 +190,8 @@ async def process_demo_chat(
             "level": context.risk_level,
             "reasons": context.risk_reasons,
             "policy_action": context.policy_action,
+            # 항목별 처리(토큰화/일반화/유지). 위치로 detection.entities 와 연결한다.
+            "entity_policies": [p.model_dump() for p in context.entity_policies],
             "policy_scope": "request",
         },
         "anonymization": {

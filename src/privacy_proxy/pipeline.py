@@ -306,6 +306,10 @@ async def run_privacy_pipeline(
                 raw_prompt=context.raw_prompt,
                 detected_entities=context.detected_entities,
                 policy_action=context.policy_action,
+                entity_policies={
+                    (p.segment_id, p.start_idx, p.end_idx): p.action
+                    for p in context.entity_policies
+                },
             )
 
             context.anonymized_prompt = result.anonymized_prompt

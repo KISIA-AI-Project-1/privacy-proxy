@@ -3,7 +3,7 @@
 import uuid
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -126,6 +126,24 @@ class DetectedPII(BaseModel):
         return self
 
 
+class EntityPolicy(BaseModel):
+    """L5가 탐지 항목 하나에 대해 정한 처리 방식. 원문 값은 담지 않는다.
+
+    ``action``은 요청 단위 ``policy_action``과 같은 어휘(TOKENIZE/GENERALIZE/ALLOW)를
+    쓰고, L6는 항목별 action이 있으면 그것을, 없으면 요청 단위 값을 따른다.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    segment_id: str
+    start_idx: int = Field(ge=0)
+    end_idx: int = Field(gt=0)
+    entity_type: str
+    privacy_class: str
+    action: Literal["TOKENIZE", "GENERALIZE", "ALLOW"]
+    reason: str
+
+
 class ProxyContext(BaseModel):
     """Shared mutable context passed through the L1-L9 pipeline."""
 
@@ -149,6 +167,7 @@ class ProxyContext(BaseModel):
     risk_level: str | None = None
     risk_reasons: list[str] = Field(default_factory=list)
     policy_action: str | None = None
+    entity_policies: list[EntityPolicy] = Field(default_factory=list)
 
     anonymized_prompt: str | None = None
     vault_mapping: dict[str, str] = Field(default_factory=dict)
