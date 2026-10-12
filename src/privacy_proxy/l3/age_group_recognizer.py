@@ -29,6 +29,7 @@ _LABEL_GAP = regex.compile(
 )
 _REFINED = regex.compile(r"초반|중반|후반")
 _COPULA = regex.compile(r"(?:입니다|이에요|예요|이다|이고|이며)(?!\w)")
+_BARE_GENDER_CONTINUATION = regex.compile("\uc5ec\uc131\uc774\uace0(?!\\w)")
 # Bounded suffix relations, not an arbitrary character-distance window.
 _NON_PERSONAL_PREFIX = regex.compile(
     r"(?<!\w)(?:가입|권장|추천|신청|이용|제한|기준|대상|법정|의무|적용|지원|평균)"
@@ -121,7 +122,43 @@ class AgeGroupStatementRecognizer(EntityRecognizer):
             after = _horizontal_end(text, ending.end(), field_end)
             if after is None or (after < len(text) and text[after] == "?"):
                 return None
+
+            # Bounded bare personal statement such as:
+            # Encoding-safe bounded AGE_GROUP personal-statement rule.
+            # Require a field-start candidate, approved refinement/copula,
+            # and complete field consumption.
+            if (
+                start == field_start
+                and refined
+                and text[ending.start() : ending.end()] == "\uc774\uc5d0\uc694"
+                and after == field_end
+            ):
+                return end
         else:
+            # Bounded evidence-only continuation for:
+            # Encoding-safe bounded AGE_GROUP personal-statement rule.
+            # The descriptor is evidence only; the emitted AGE_GROUP
+            # span remains exactly the age-group value.
+            gender = _BARE_GENDER_CONTINUATION.match(
+                text,
+                following,
+                field_end,
+                timeout=_REGEX_TIMEOUT,
+            )
+
+            if gender:
+                after_gender = _horizontal_end(
+                    text,
+                    gender.end(),
+                    field_end,
+                )
+
+                if after_gender is None or (after_gender < len(text) and text[after_gender] == "?"):
+                    return None
+
+                if start == field_start and after_gender == field_end:
+                    return end
+
             if following < len(text) and text[following] == "?":
                 return None
             if _REJECTED_SUFFIX.match(text, following, field_end, timeout=_REGEX_TIMEOUT):
