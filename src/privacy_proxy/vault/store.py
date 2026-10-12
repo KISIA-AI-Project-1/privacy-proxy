@@ -43,7 +43,7 @@ class MappingRecord:
         return json.dumps(asdict(self), ensure_ascii=False)
 
     @classmethod
-    def from_json(cls, raw: str) -> MappingRecord:
+    def from_json(cls, raw: str | bytes) -> MappingRecord:
         return cls(**json.loads(raw))
 
 
@@ -124,12 +124,14 @@ class RedisVaultStore:
         if raw is None:
             return None
         self._r.expire(key, self._ttl)  # sliding TTL
-        return MappingRecord.from_json(raw.decode())
+        return MappingRecord.from_json(raw)
 
     def get_mapping(self, session_id: str, namespace: str, normalized: str) -> MappingRecord | None:
         rec = self._load(self._keys.fwd(session_id, namespace, normalized))
         if rec is not None:
             self._r.expire(self._keys.rev(session_id, rec.pseudonym), self._ttl)
+            # 카운터가 매핑보다 먼저 만료되면 번호가 1부터 다시 시작해 기존 가명과 충돌한다.
+            self._r.expire(self._keys.ctr(session_id, rec.entity_type), self._ttl)
         return rec
 
     def get_by_pseudonym(self, session_id: str, pseudonym: str) -> MappingRecord | None:

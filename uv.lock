@@ -2795,6 +2795,7 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "ruff" },
+    { name = "seqeval" },
     { name = "types-redis" },
 ]
 
@@ -2843,6 +2844,7 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=0.25" },
     { name = "pytest-cov", specifier = ">=6.0" },
     { name = "ruff", specifier = ">=0.16.5" },
+    { name = "seqeval", specifier = ">=1.2.2" },
     { name = "types-redis", specifier = ">=4.6" },
 ]
 
