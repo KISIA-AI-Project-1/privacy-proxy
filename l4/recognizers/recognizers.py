@@ -25,8 +25,10 @@
 from __future__ import annotations
 
 import re
+from functools import cache, lru_cache
 
 import phonenumbers
+from presidio_analyzer.predefined_recognizers import EmailRecognizer
 
 from l4.recognizers.anchors import ANCHORS
 from l4.recognizers.context import has_anchor, score
@@ -41,6 +43,7 @@ from l4.recognizers.patterns import (
     ORDER_ID_DATE_EXCLUDE,
     PATTERNS,
 )
+from privacy_proxy.l3.email_validation import configure_email
 from privacy_proxy.schemas import DetectedPII, DetectionTier
 
 _WINDOW = 25
@@ -54,17 +57,19 @@ _ADDRESS_DETAIL_CONFIDENCE: dict[str, float] = {
 }
 
 
-def _is_phone_number(candidate: str) -> bool:
-    """후보 문자열이 유효한 한국 전화번호인지. 정규식 자릿수만으로는 전화번호와
-    우리 ID들을 못 가른다(둘 다 숫자 8~11자리) — 실제 유효성 검사로 판별한다.
-    """
-    try:
-        parsed = phonenumbers.parse(candidate, "KR")
-    except phonenumbers.NumberParseException:
-        return False
-    # phonenumbers는 타입 스텁이 부실해서 is_valid_number()가 Any로 잡힌다.
-    is_valid: bool = phonenumbers.is_valid_number(parsed)
-    return is_valid
+@cache
+def _email_recognizer() -> EmailRecognizer:
+    producer = EmailRecognizer(supported_language="ko")
+    configure_email(producer)
+    return producer
+
+
+@lru_cache(maxsize=32)
+def _l3_spans(text: str) -> tuple[tuple[int, int], ...]:
+    """L3와 같은 설정의 전화번호(KR, leniency=1)·이메일 탐지 구간."""
+    phones = phonenumbers.PhoneNumberMatcher(text, "KR", leniency=1)
+    emails = _email_recognizer().analyze(text, ["EMAIL_ADDRESS"])
+    return tuple((m.start, m.end) for m in phones) + tuple((r.start, r.end) for r in emails)
 
 
 def _excluded(text: str, start: int, end: int) -> bool:
@@ -73,13 +78,13 @@ def _excluded(text: str, start: int, end: int) -> bool:
     원문 위치 기준으로 판단한다 — 후보 문자열만 보면 CUSTOMER_ID처럼 숫자열만
     남는 후보에서 전화번호 배제가 안 걸리는 경우가 있다(예: "010-0000-0000"의
     "0000"). L3 형식이 후보를 통째로 감쌀 때만 배제하고 부분 겹침은 남긴다.
-    전화번호는 정규식 배제 목록에 없어 ``_is_phone_number``로 별도 확인한다.
+    전화번호·이메일은 정규식 목록이 아니라 L3 인식기 설정을 그대로 쓴다.
     """
     for pattern in EXCLUDE_PATTERNS:
         for hit in pattern.finditer(text):
             if hit.start() <= start and hit.end() >= end:
                 return True
-    return _is_phone_number(text[start:end])
+    return any(s <= start and e >= end for s, e in _l3_spans(text))
 
 
 def _emit(
