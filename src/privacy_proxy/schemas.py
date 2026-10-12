@@ -126,6 +126,24 @@ class DetectedPII(BaseModel):
         return self
 
 
+class EntityOutcome(BaseModel):
+    """항목별 L6 실제 처리 결과. 원문 값은 포함하지 않는다."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    segment_id: str
+    start_idx: int = Field(ge=0)
+    end_idx: int = Field(gt=0)
+    entity_type: str
+    action: Literal["TOKENIZE", "GENERALIZE", "KEEP", "SKIPPED"]
+
+    @model_validator(mode="after")
+    def validate_span(self) -> "EntityOutcome":
+        if self.end_idx <= self.start_idx:
+            raise ValueError("invalid entity outcome span")
+        return self
+
+
 class EntityPolicy(BaseModel):
     """L5가 탐지 항목 하나에 대해 정한 처리 방식. 원문 값은 담지 않는다.
 
@@ -173,6 +191,7 @@ class ProxyContext(BaseModel):
     vault_mapping: dict[str, str] = Field(default_factory=dict)
     token_types: dict[str, str] = Field(default_factory=dict)
     entity_actions: list[dict[str, Any]] = Field(default_factory=list)
+    entity_outcomes: list[EntityOutcome] = Field(default_factory=list)
     upstream_response_text: str = Field(default="", exclude=True, repr=False)
 
     reconstructed_body: dict[str, Any] = Field(default_factory=dict)

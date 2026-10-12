@@ -171,6 +171,8 @@ async def process_demo_chat(
         for token, entity_type in context.token_types.items()
     ]
 
+    applied = {(o.segment_id, o.start_idx, o.end_idx): o.action for o in context.entity_outcomes}
+
     return {
         "status": context.status,
         "session_id": context.session_id,
@@ -190,14 +192,20 @@ async def process_demo_chat(
             "level": context.risk_level,
             "reasons": context.risk_reasons,
             "policy_action": context.policy_action,
-            # 항목별 처리(토큰화/일반화/유지). 위치로 detection.entities 와 연결한다.
-            "entity_policies": [p.model_dump() for p in context.entity_policies],
+            "entity_policies": [
+                {
+                    **p.model_dump(),
+                    "applied": applied.get((p.segment_id, p.start_idx, p.end_idx)),
+                }
+                for p in context.entity_policies
+            ],
             "policy_scope": "request",
         },
         "anonymization": {
             "text": context.anonymized_prompt,
             "tokens": tokens,
             "entity_actions": context.entity_actions,
+            "entity_outcomes": [outcome.model_dump() for outcome in context.entity_outcomes],
         },
         "upstream": {
             "request_body": context.upstream_request_body,

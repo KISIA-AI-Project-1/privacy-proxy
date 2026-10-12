@@ -21,7 +21,6 @@ import httpx
 from fastapi.testclient import TestClient
 
 from privacy_proxy.config import get_settings
-from privacy_proxy.main import app
 
 PHONE = "010-9999-8888"
 
@@ -36,6 +35,9 @@ class Case:
     restore: bool = True
     repeat_phone: bool = False
     no_detections: bool = False
+    kept: tuple[str, ...] = ()
+    expected_actions: tuple[tuple[str, str, str], ...] = ()
+    expected_response: str | None = None
 
 
 CASES = (
@@ -79,6 +81,40 @@ CASES = (
         ("PHONE_NUMBER", "ADDRESS_ROAD"),
     ),
     Case("health", "proxy", "저는 당뇨가 있어요", ("당뇨",), ("SENSITIVE_HEALTH",)),
+    Case(
+        "purchase_kept_low_risk",
+        "proxy",
+        "매달 임신테스트기를 주문해요.",
+        required=("PRODUCT_ITEM", "PURCHASE_PATTERN"),
+        kept=("매달", "임신테스트기"),
+        expected_actions=(("PRODUCT_ITEM", "ALLOW", "KEEP"), ("PURCHASE_PATTERN", "ALLOW", "KEEP")),
+    ),
+    Case(
+        "age_kept_with_phone",
+        "proxy",
+        f"저는 30대입니다. 연락처 {PHONE}",
+        protected=(PHONE,),
+        required=("AGE_GROUP", "PHONE_NUMBER"),
+        kept=("30대",),
+        expected_actions=(("AGE_GROUP", "ALLOW", "KEEP"), ("PHONE_NUMBER", "TOKENIZE", "TOKENIZE")),
+    ),
+    Case(
+        "purchase_protected_with_generalized_qis",
+        "proxy",
+        f"저는 35세입니다. 신림동에 살아요. 매달 임신테스트기를 주문해요. 연락처 {PHONE}",
+        protected=("35세", "신림동", "임신테스트기", PHONE),
+        required=("AGE", "LOCATION", "PRODUCT_ITEM", "PURCHASE_PATTERN", "PHONE_NUMBER"),
+        restore=False,
+        kept=("매달",),
+        expected_response=f"저는 30대입니다. 【LOCATION】에 살아요. 매달 임신테스트기를 주문해요. 연락처 {PHONE}",
+        expected_actions=(
+            ("AGE", "GENERALIZE", "GENERALIZE"),
+            ("LOCATION", "GENERALIZE", "GENERALIZE"),
+            ("PRODUCT_ITEM", "GENERALIZE", "TOKENIZE"),
+            ("PURCHASE_PATTERN", "ALLOW", "KEEP"),
+            ("PHONE_NUMBER", "TOKENIZE", "TOKENIZE"),
+        ),
+    ),
     Case("name_1", "team", "안녕하세요 김서연입니다", ("김서연",), ("PERSON_KO",)),
     Case("name_2", "team", "저는 최영수입니다", ("최영수",), ("PERSON_KO",)),
     Case("name_3", "team", "고객 이름은 김민지입니다", ("김민지",), ("PERSON_KO",)),
@@ -88,7 +124,7 @@ CASES = (
     Case("order_type", "team", "주문번호 2026101112345", ("2026101112345",), ("ORDER_ID",)),
     Case("tracking_type", "team", "송장번호 112412345601", ("112412345601",), ("TRACKING_NUMBER",)),
     Case(
-        "detail_generalize",
+        "detail_address_protection",
         "team",
         "배송 주소는 101동 1203호",
         ("101동 1203호",),
@@ -98,6 +134,42 @@ CASES = (
     Case("age_1", "team", "30대 초반이에요", required=("AGE_GROUP",)),
     Case("age_2", "team", "30대 여성이고", required=("AGE_GROUP",)),
 )
+
+
+def validate_applied(data: dict[str, Any]) -> list[str]:
+    """Cross-check each L5 display row with the actual L6 result, by coordinates."""
+    policies = data.get("risk", {}).get("entity_policies")
+    outcomes = data.get("anonymization", {}).get("entity_outcomes")
+    if not isinstance(policies, list) or not isinstance(outcomes, list):
+        return ["MISSING_POLICY_OR_OUTCOME_LIST"]
+    actual = {}
+    failures: list[str] = []
+    for outcome in outcomes:
+        key = (outcome["segment_id"], outcome["start_idx"], outcome["end_idx"])
+        if key in actual:
+            failures.append("DUPLICATE_OUTCOME_COORDINATES")
+        actual[key] = outcome
+        if outcome["action"] not in {"TOKENIZE", "GENERALIZE", "KEEP", "SKIPPED"}:
+            failures.append("INVALID_OUTCOME_ACTION")
+        if outcome["action"] == "SKIPPED":
+            failures.append("UNEXPECTED_SKIPPED_IN_STRICT_MODE")
+    seen = set()
+    for policy in policies:
+        key = (policy["segment_id"], policy["start_idx"], policy["end_idx"])
+        if key in seen:
+            failures.append("DUPLICATE_POLICY_COORDINATES")
+        seen.add(key)
+        outcome = actual.get(key)
+        if outcome is None:
+            failures.append("MISSING_L6_OUTCOME")
+        elif (
+            policy.get("applied") != outcome["action"]
+            or policy["entity_type"] != outcome["entity_type"]
+        ):
+            failures.append("APPLIED_OUTCOME_MISMATCH")
+    if set(actual) != seen:
+        failures.append("POLICY_OUTCOME_COVERAGE_MISMATCH")
+    return failures
 
 
 def evaluate(case: Case, response: httpx.Response, sent: list[str]) -> dict[str, Any]:
@@ -116,7 +188,27 @@ def evaluate(case: Case, response: httpx.Response, sent: list[str]) -> dict[str,
     kinds = {item["entity_type"] for item in data["detection"]["entities"]}
     leaks = [value for value in case.protected if value in outgoing]
     missing = [kind for kind in case.required if kind not in kinds]
-    failures: list[str] = []
+    failures: list[str] = validate_applied(data)
+    for value in case.kept:
+        if value not in outgoing:
+            failures.append("EXPECTED_KEPT_VALUE_MISSING")
+    for kind, planned, applied in case.expected_actions:
+        rows = [
+            row for row in data["risk"].get("entity_policies", []) if row["entity_type"] == kind
+        ]
+        if not rows or any(
+            row["action"] != planned or row.get("applied") != applied for row in rows
+        ):
+            failures.append(f"EXPECTED_ACTION_MISMATCH:{kind}")
+    if case.expected_response is not None and data["response"]["text"] != case.expected_response:
+        failures.append("GENERALIZED_RESPONSE_MISMATCH")
+    if case.name == "health":
+        tokens = data["anonymization"]["tokens"]
+        if not any(
+            item["entity_type"] == "SENSITIVE_HEALTH" and ":건강정보】" in item["token"]
+            for item in tokens
+        ):
+            failures.append("HEALTH_HINT_MISSING")
     if case.restore and data["response"]["text"] != case.text:
         failures.append("RESTORATION_MISMATCH")
     if case.no_detections and kinds:
@@ -186,6 +278,17 @@ def run(scope: str) -> tuple[int, dict[str, Any]]:
     ):
         get_settings.cache_clear()
         try:
+            from privacy_proxy.main import app
+        except ImportError:
+            get_settings.cache_clear()
+            report.update(
+                status="NOT_READY",
+                readiness_http=None,
+                security={"unauthenticated_http": None, "upload_log_http": None},
+                error="APPLICATION_DEPENDENCY_IMPORT_FAILED",
+            )
+            return 2, report
+        try:
             with TestClient(app) as client:
                 auth = client.post("/v1/demo/chat", json={}).status_code
                 removed = client.post(
@@ -229,6 +332,8 @@ def main() -> int:
     code, report = run(args.scope)
     print(f"Security: {report['security']}; readiness HTTP {report['readiness_http']}")
     if code == 2:
+        if report.get("error"):
+            print(f"Reason: {report['error']}")
         print(
             "NOT READY: no E2E case passed. Check spaCy models, DLL policy and server dependencies."
         )

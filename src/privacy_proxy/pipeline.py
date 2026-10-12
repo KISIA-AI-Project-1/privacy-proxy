@@ -12,7 +12,7 @@ from l4.recognizers import (
     find_order_id,
     find_tracking_number,
 )
-from l4.sensitive.engine import find_state
+from l4.sensitive import find_sensitive
 from redis import Redis
 
 from audit.logger import audit_log_l9
@@ -21,13 +21,13 @@ from privacy_proxy.config import get_settings
 from privacy_proxy.risk import run_l5_risk_scoring
 from privacy_proxy.schemas import (
     DetectedPII,
+    EntityOutcome,
     ProxyContext,
     TextSegment,
     UserContext,
 )
 from privacy_proxy.vault import Tokenizer, VaultCrypto
 from privacy_proxy.vault.store import InMemoryVaultStore, RedisVaultStore, VaultStore
-from privacy_proxy.vault.tokenizer import resolve_spec
 from restore.restorer import restore_l8
 from upstream.llm_client import call_gemini_l7
 
@@ -270,9 +270,8 @@ async def run_privacy_pipeline(
                     find_address_detail,
                 ):
                     l4_results.extend(recognizer(seg.text, segment_id=seg.segment_id))
-                state_results = find_state(seg.text, segment_id=seg.segment_id)
-                l4_results.extend(state_results)
-                # Purchase and NER await their owners' L6/runtime integration.
+                l4_results.extend(find_sensitive(seg.text, segment_id=seg.segment_id))
+                # NER awaits its owner's model/runtime integration.
 
                 for det in l4_results:
                     context.detected_entities.append(_to_detected_pii(det, offset))
@@ -315,22 +314,18 @@ async def run_privacy_pipeline(
             context.anonymized_prompt = result.anonymized_prompt
             context.vault_mapping = result.vault_mapping
             context.token_types = result.token_types
-            context.entity_actions = [
-                {
-                    "start_idx": entity.start_idx,
-                    "end_idx": entity.end_idx,
-                    "entity_type": str(entity.entity_type),
-                    "action": (
-                        "ALLOW"
-                        if (spec := resolve_spec(str(entity.entity_type), context.policy_action))
-                        is None
-                        else "GENERALIZE"
-                        if spec.strategy == "GENERALIZE"
-                        else "TOKENIZE"
-                    ),
-                }
-                for entity in context.detected_entities
+            context.entity_outcomes = [
+                EntityOutcome(
+                    segment_id=a.segment_id,
+                    start_idx=a.start_idx,
+                    end_idx=a.end_idx,
+                    entity_type=a.entity_type,
+                    action=a.action.value,
+                )
+                for a in result.entity_actions
             ]
+
+            context.entity_actions = [outcome.model_dump() for outcome in context.entity_outcomes]
             context.latency_ms["L6"] = round((perf_counter() - started) * 1000, 3)
 
         except Exception:
