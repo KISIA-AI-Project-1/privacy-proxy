@@ -16,6 +16,8 @@ dependencies = [
     # extra)의 전이 의존성으로 이미 lock엔 있었지만, recognizers는 extra 없이 단독으로
     # 돌아야 하므로(torch 불필요) 직접 의존성으로 명시한다.
     "phonenumbers>=9.0",
+    # L4 sensitive recognizers load their bundled YAML lexicons at runtime.
+    "PyYAML>=6.0",
 ]
 
 # 탐지 계층(L3/L4)은 모델 의존성이 무겁다(torch, spacy, transformers).
@@ -37,6 +39,15 @@ detection-lite = [
     "presidio-analyzer>=2.2",
     "presidio-anonymizer>=2.2",
     "spacy>=3.8",
+]
+
+# 모델을 사용하는 L3용. L4의 torch/transformers는 포함하지 않는다.
+detection-l3 = [
+    "presidio-analyzer>=2.2",
+    "presidio-anonymizer>=2.2",
+    "spacy==3.8.16",
+    "ko-core-news-lg @ https://github.com/explosion/spacy-models/releases/download/ko_core_news_lg-3.8.0/ko_core_news_lg-3.8.0-py3-none-any.whl",
+    "en-core-web-lg @ https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.8.0/en_core_web_lg-3.8.0-py3-none-any.whl",
 ]
 
 # L4 NER 학습 전용. 런타임 추론에는 필요 없어서 detection과 분리한다.
@@ -62,6 +73,7 @@ dev = [
     "ruff>=0.16.5",
     "pre-commit>=4.1",
     "types-redis>=4.6",
+    "seqeval>=1.2.2",
 ]
 
 [build-system]

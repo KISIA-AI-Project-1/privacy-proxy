@@ -15,7 +15,7 @@ from l4.recognizers import (
     find_order_id,
     find_tracking_number,
 )
-from l4.recognizers.recognizers import _excluded, _is_phone_number
+from l4.recognizers.recognizers import _excluded
 from pydantic import ValidationError
 
 from privacy_proxy.schemas import DetectedPII, DetectionTier
@@ -171,7 +171,24 @@ def test_사업자등록번호는_하이픈_유무_둘_다_배제된다() -> Non
     ],
 )
 def test_전화번호_유효성_검사(candidate: str, expected: bool) -> None:
-    assert _is_phone_number(candidate) is expected
+    text = f"연락처 {candidate} 입니다"
+    start = text.index(candidate)
+
+    assert _excluded(text, start, start + len(candidate)) is expected
+
+
+@pytest.mark.parametrize(
+    "text,candidate,expected",
+    [
+        ("메일 sjpark@corp-solution.co.kr 입니다", "solution", True),
+        ("메일 hong@example.com님께", "example", True),
+        ("메일 hong@example.invalidtld 입니다", "example", False),
+    ],
+)
+def test_이메일_배제는_L3_인식기를_따른다(text: str, candidate: str, expected: bool) -> None:
+    start = text.index(candidate)
+
+    assert _excluded(text, start, start + len(candidate)) is expected
 
 
 # ── 유니코드 경계(\b 대체) ──────────────────────────

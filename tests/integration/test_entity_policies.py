@@ -38,7 +38,7 @@ def _run(text: str, dets: list[DetectedPII]) -> tuple[ProxyContext, str]:
         raw_prompt=text,
         detected_entities=context.detected_entities,
         policy_action=context.policy_action,
-        entity_actions={
+        entity_policies={
             (p.segment_id, p.start_idx, p.end_idx): p.action for p in context.entity_policies
         },
     )
@@ -105,7 +105,7 @@ def test_product_and_purchase_pattern_do_not_fail_l6() -> None:
     assert sent == "매달 임신테스트기 주문하는 계정이에요. 【PHONE_1】로 연락주세요."
 
 
-def test_without_entity_actions_l6_keeps_old_behavior() -> None:
+def test_without_entity_policies_l6_keeps_old_behavior() -> None:
     text = "30대이고 연락처는 010-1234-5678 입니다."
     crypto = VaultCrypto(os.urandom(32))
     dets = [
@@ -136,7 +136,7 @@ def test_purchase_pattern_passes_through_all_policies(
         raw_prompt=text,
         detected_entities=[entity],
         policy_action=request_action,
-        entity_actions=actions,
+        entity_policies=actions,
     )
     assert result.anonymized_prompt == text
     assert result.vault_mapping == {}

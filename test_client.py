@@ -1,16 +1,22 @@
 import asyncio
+import os
 
 import httpx
 
+from privacy_proxy.config import get_settings
 
-async def run_test():
+
+async def run_test() -> None:
     url = "http://localhost:8000/v1/chat"
 
-    headers = {"Authorization": "Bearer example-proxy-key"}
+    api_key = get_settings().proxy_api_key.get_secret_value().strip()
+    if not api_key:
+        raise ValueError("PROXY_API_KEY_REQUIRED")
+    headers = {"Authorization": f"Bearer {api_key}"}
 
     # OpenAI 대신 제미나이 규격으로 요청을 보냅니다. (L2 어댑터가 이를 감지해 Gemini로 연결함)
     payload = {
-        "model": "gemini-pro",
+        "model": os.getenv("DEMO_MODEL", "gemini-3.1-flash-lite"),
         "contents": [
             {
                 "role": "user",
@@ -31,4 +37,5 @@ async def run_test():
         print(response.json())
 
 
-asyncio.run(run_test())
+if __name__ == "__main__":
+    asyncio.run(run_test())

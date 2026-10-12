@@ -8,7 +8,7 @@
 - `PURCHASE_PATTERN`은 QI 분기보다 먼저 처리하여 항상 `ALLOW`로 내며, 화면에서 `유지`로 표시할 이유는 `업무상 유지 정보(점수 반영)`이다.
 - 탐지된 경우에만 `risk_reasons`에 `구매 패턴(PURCHASE_PATTERN)은 위험 점수에 반영되지만 업무상 유지 정보라 치환하지 않음`을 추가한다. 원문 값은 포함하지 않는다.
 - L6의 `POLICY_SPECS["PURCHASE_PATTERN"]`은 `{}`로 명시한다. 항목을 제거하면 strict 모드의 미지원 타입 검증에 걸리므로 빈 규칙으로 등록한다. 요청·항목별 정책이 무엇이든 원문을 통과시키고 Vault 매핑은 만들지 않는다.
-- 파이프라인은 `(segment_id, start_idx, end_idx)`를 키로 항목별 action을 L6에 전달한다. 항목별 값이 없으면 기존 요청 정책을 사용한다. 데모 API는 `risk.entity_policies`를 반환한다.
+- 파이프라인은 `(segment_id, start_idx, end_idx)`를 키로 항목별 action을 L6의 `entity_policies` 인자로 전달한다. L6의 `entity_actions`는 실제 처리 결과(TOKENIZE/GENERALIZE/KEEP/SKIPPED)를 뜻하며 입력 정책과 구분한다. 항목별 값이 없으면 기존 요청 정책을 사용한다. 데모 API는 `risk.entity_policies`를 반환한다.
 - 직접·서비스 식별자 및 민감정보는 L5에서 항상 `TOKENIZE`이다. 일반 QI는 최소 점수 적용 전 QI 점수가 30점 이상이면 `GENERALIZE`, 미만이면 `ALLOW`이다. 요청 전체의 기존 점수·등급·정책 계산은 변경하지 않는다.
 
-`PRODUCT_ITEM`을 항상 일반화하는 안, 지역 QI의 점수와 무관한 보호 기준, L4 구현 상태 갱신은 별도 합의·확인 사항이다. 상품은 첨부 패치의 임시 규칙(요청 TOKENIZE일 때 토큰화, GENERALIZE/ALLOW에서 원문 통과)을 사용하며 실제 상품 범주 일반화는 구현하지 않는다. 화면은 L5의 action과 L6의 실제 출력이 다를 수 있음을 고려해야 한다.
+`PRODUCT_ITEM`을 항상 일반화하는 안, 지역 QI의 점수와 무관한 보호 기준, L4 구현 상태 갱신은 별도 합의·확인 사항이다. 최신 develop의 L6 상품 규칙을 유지한다: TOKENIZE/GENERALIZE에서 가역 토큰으로 보호하고 ALLOW에서 원문 통과한다. 실제 상품 범주 일반화는 구현하지 않으며, 화면은 L5의 지시와 L6 `entity_actions`의 실제 처리 결과를 구분한다.

@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform == 'win32'",
@@ -2750,6 +2750,7 @@ dependencies = [
     { name = "phonenumbers" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "pyyaml" },
     { name = "redis" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -2763,6 +2764,13 @@ detection = [
     { name = "spacy" },
     { name = "torch" },
     { name = "transformers" },
+]
+detection-l3 = [
+    { name = "en-core-web-lg" },
+    { name = "ko-core-news-lg" },
+    { name = "presidio-analyzer" },
+    { name = "presidio-anonymizer" },
+    { name = "spacy" },
 ]
 detection-lite = [
     { name = "presidio-analyzer" },
@@ -2787,6 +2795,7 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "ruff" },
+    { name = "seqeval" },
     { name = "types-redis" },
 ]
 
@@ -2797,21 +2806,27 @@ requires-dist = [
     { name = "cryptography", specifier = ">=44.0" },
     { name = "datasets", marker = "extra == 'training'", specifier = ">=3.2" },
     { name = "en-core-web-lg", marker = "extra == 'detection'", url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.8.0/en_core_web_lg-3.8.0-py3-none-any.whl" },
+    { name = "en-core-web-lg", marker = "extra == 'detection-l3'", url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.8.0/en_core_web_lg-3.8.0-py3-none-any.whl" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "ko-core-news-lg", marker = "extra == 'detection'", url = "https://github.com/explosion/spacy-models/releases/download/ko_core_news_lg-3.8.0/ko_core_news_lg-3.8.0-py3-none-any.whl" },
+    { name = "ko-core-news-lg", marker = "extra == 'detection-l3'", url = "https://github.com/explosion/spacy-models/releases/download/ko_core_news_lg-3.8.0/ko_core_news_lg-3.8.0-py3-none-any.whl" },
     { name = "matplotlib", marker = "extra == 'training'", specifier = ">=3.10" },
     { name = "pandas", marker = "extra == 'training'", specifier = ">=2.2" },
     { name = "phonenumbers", specifier = ">=9.0" },
     { name = "presidio-analyzer", marker = "extra == 'detection'", specifier = ">=2.2" },
+    { name = "presidio-analyzer", marker = "extra == 'detection-l3'", specifier = ">=2.2" },
     { name = "presidio-analyzer", marker = "extra == 'detection-lite'", specifier = ">=2.2" },
     { name = "presidio-anonymizer", marker = "extra == 'detection'", specifier = ">=2.2" },
+    { name = "presidio-anonymizer", marker = "extra == 'detection-l3'", specifier = ">=2.2" },
     { name = "presidio-anonymizer", marker = "extra == 'detection-lite'", specifier = ">=2.2" },
     { name = "pydantic", specifier = ">=2.10" },
     { name = "pydantic-settings", specifier = ">=2.7" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "redis", specifier = ">=5.2" },
     { name = "seqeval", marker = "extra == 'training'", specifier = ">=1.2" },
     { name = "spacy", marker = "extra == 'detection'", specifier = "==3.8.16" },
+    { name = "spacy", marker = "extra == 'detection-l3'", specifier = "==3.8.16" },
     { name = "spacy", marker = "extra == 'detection-lite'", specifier = ">=3.8" },
     { name = "torch", marker = "extra == 'detection'", specifier = ">=2.5" },
     { name = "torch", marker = "extra == 'training'", specifier = ">=2.5" },
@@ -2819,7 +2834,7 @@ requires-dist = [
     { name = "transformers", marker = "extra == 'training'", specifier = ">=4.48" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34" },
 ]
-provides-extras = ["detection", "detection-lite", "training"]
+provides-extras = ["detection", "detection-lite", "detection-l3", "training"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2829,6 +2844,7 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=0.25" },
     { name = "pytest-cov", specifier = ">=6.0" },
     { name = "ruff", specifier = ">=0.16.5" },
+    { name = "seqeval", specifier = ">=1.2.2" },
     { name = "types-redis", specifier = ">=4.6" },
 ]
 

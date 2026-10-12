@@ -1,6 +1,8 @@
 from collections.abc import AsyncGenerator, AsyncIterable
+from time import perf_counter
 from typing import cast
 
+from privacy_proxy.config import get_settings
 from privacy_proxy.schemas import ProxyContext
 
 
@@ -62,6 +64,8 @@ async def restore_l8(context: ProxyContext) -> ProxyContext:
             async for chunk in source:
                 if not isinstance(chunk, str):
                     raise TypeError("unexpected upstream chunk type")
+                if get_settings().demo_mode:
+                    context.upstream_response_text += chunk
 
                 if not mapping:
                     if chunk:
@@ -69,18 +73,26 @@ async def restore_l8(context: ProxyContext) -> ProxyContext:
                     continue
 
                 buffer += chunk
+                started = perf_counter()
                 ready, buffer = consume_buffer(
                     buffer,
                     final=False,
+                )
+                context.latency_ms["L8_processing"] = (
+                    context.latency_ms.get("L8_processing", 0.0) + (perf_counter() - started) * 1000
                 )
 
                 if ready:
                     yield ready
 
             if buffer:
+                started = perf_counter()
                 ready, _ = consume_buffer(
                     buffer,
                     final=True,
+                )
+                context.latency_ms["L8_processing"] = (
+                    context.latency_ms.get("L8_processing", 0.0) + (perf_counter() - started) * 1000
                 )
                 if ready:
                     yield ready
@@ -90,6 +102,10 @@ async def restore_l8(context: ProxyContext) -> ProxyContext:
                 context.status = "failed"
                 context.error = "L8_STREAM_FAILED"
             raise
+        finally:
+            context.latency_ms["L8_processing"] = round(
+                context.latency_ms.get("L8_processing", 0.0), 3
+            )
 
     context.final_response = restored_stream()
     return context
