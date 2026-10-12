@@ -12,7 +12,6 @@ from presidio_analyzer.nlp_engine import NoOpNlpEngine
 from presidio_analyzer.predefined_recognizers import (
     EmailRecognizer,
     KrBrnRecognizer,
-    KrDriverLicenseRecognizer,
     KrFrnRecognizer,
     KrPassportRecognizer,
     KrRrnRecognizer,
@@ -24,6 +23,7 @@ from privacy_proxy.l3.age_group_recognizer import AgeGroupStatementRecognizer
 from privacy_proxy.l3.age_recognizer import AgeStatementRecognizer
 from privacy_proxy.l3.date_of_birth_recognizer import DateOfBirthRecognizer
 from privacy_proxy.l3.detection_adapter import adapt_result
+from privacy_proxy.l3.driver_license_recognizer import KrDriverLicenseRecognizer
 from privacy_proxy.l3.provenance import ProvenanceError, resolve_producer
 from privacy_proxy.l3.registry import PRODUCER_TYPES, RegistryConfigurationError, validate_registry
 from privacy_proxy.l3.service import L3AnalyzerService, L3RuntimeError, UnsupportedCapabilityError
