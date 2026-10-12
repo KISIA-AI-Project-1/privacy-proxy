@@ -1,16 +1,18 @@
 """L6 가역적 토큰화.
 
-입력: session_id, raw_prompt(전체 프롬프트), detected_entities(L3/L4 DetectedPII), policy_action(L5, 요청 전체 정책)
+입력: session_id, raw_prompt(전체 프롬프트), detected_entities(L3/L4 DetectedPII),
+      policy_action(L5, 요청 전체 정책), entity_policies(L5, 항목별 정책)
 출력: TokenizationResult
 
-처리 방식은 (entity_type, policy_action) 조합으로 결정한다. 원문 내용(키워드 사전 등)은 보지 않는다.
-  - 직접식별자(이름/연락처/각종 ID/고유식별정보/민감정보): policy 와 무관하게 항상 가역 치환
-  - 주소: 기본 일반화(비가역). policy=TOKENIZE 이면 가역 토큰
+처리 방식은 (entity_type, action) 조합으로 결정한다. 원문 내용(키워드 사전 등)은 보지 않는다.
+action 은 항목별 정책(entity_policies)이 있으면 그것을, 없으면 요청 단위 policy_action 을 쓴다.
+  - 직접식별자(이름/연락처/각종 ID/고유식별정보/민감정보): action 과 무관하게 항상 가역 치환
+  - 주소: 기본 일반화(비가역). action=TOKENIZE 이면 가역 토큰
   - 준식별자(LOCATION/AGE/AGE_GROUP/LOCATION_INFORMAL/PRODUCT_ITEM):
-    L5 가 위험으로 판단해 TOKENIZE/GENERALIZE 를 내린 경우에만 보호, 그 외 정책이면 그대로 통과
+    L5 가 위험으로 판단해 TOKENIZE/GENERALIZE 를 내린 경우에만 보호, 그 외면 그대로 통과
   - 항상 통과: PURCHASE_PATTERN(정기배송 여부 등)
-    시나리오 A 에서 "업무상 유지할 정보"라서 L6 는 policy 와 무관하게 건드리지 않는다.
-    L5 위험 점수에는 그대로 반영된다(L5 쪽 코드는 변경 없음).
+    시나리오 A 에서 "업무상 유지할 정보"라서 L6 는 action 과 무관하게 건드리지 않는다.
+    L5 위험 점수에는 그대로 반영된다.
 
 Strategy:
   NATURAL_PSEUDONYM : 이름 -> 자연스러운 가명 (가역)
@@ -18,7 +20,8 @@ Strategy:
   GENERALIZE        : 더 넓은 범위 값으로 치환 (비가역, Vault 저장 안 함)
 
 span 별 처리 결과는 TokenizationResult.entity_actions 로 돌려준다(TOKENIZE/GENERALIZE/KEEP/SKIPPED).
-시연 화면의 항목별 "유지" 표시용이며 원문 값은 담지 않는다.
+(segment_id, start_idx, end_idx) 가 L5 EntityPolicy 와 같은 키라 좌표로 조인할 수 있다.
+원문 값은 담지 않는다.
 
 힌트는 entity_type 별 고정 문구만 쓴다(원문 내용과 무관 -> 어떤 입력에도 동일하게 동작).
 의미 보존형 상품 일반화는 L4 가 카테고리를 DetectedPII 로 제공하게 되면 그때 추가한다.
@@ -27,7 +30,7 @@ span 별 처리 결과는 TokenizationResult.entity_actions 로 돌려준다(TOK
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
@@ -63,7 +66,7 @@ def _gen(name: str) -> EntitySpec:
 
 _NATURAL = EntitySpec(Strategy.NATURAL_PSEUDONYM)
 
-# policy 와 무관하게 항상 적용
+# action 과 무관하게 항상 적용
 BASE_SPECS: dict[str, EntitySpec] = {
     "PERSON_KO": _NATURAL,
     "PERSON_EN": _NATURAL,
@@ -84,7 +87,7 @@ BASE_SPECS: dict[str, EntitySpec] = {
     "SENSITIVE_SEX_LIFE": _tok("SEX_LIFE"),
 }
 
-# policy_action 에 따라 달라지는 타입. "*" 는 policy 가 None/그 외일 때의 기본값(없으면 통과)
+# action 에 따라 달라지는 타입. "*" 는 action 이 None/그 외일 때의 기본값(없으면 통과)
 # ADDRESS_ROAD/LOT/DETAIL 은 L4 가 시·구 없이 "월드컵북로4길 77" 처럼 조각으로 내보내므로
 # 비가역 기본값은 어절을 남기는 일반화가 아니라 전체 마스킹("address_fragment")이다.
 POLICY_SPECS: dict[str, dict[str, EntitySpec]] = {
@@ -103,6 +106,7 @@ POLICY_SPECS: dict[str, dict[str, EntitySpec]] = {
     "PRODUCT_ITEM": {"TOKENIZE": _tok("PRODUCT"), "GENERALIZE": _tok("PRODUCT")},
     # 정기배송 여부는 시나리오 A 의 "업무상 유지할 정보". 팀 합의(L6 항상 통과, L5 점수엔 반영).
     # 빈 dict -> resolve_spec 이 None -> passthrough(KEEP). is_known 은 True 라 strict 에서도 예외 없음.
+    # 주의: 이 키를 삭제하면 strict 모드에서 UnsupportedEntityError 로 L6 전체가 실패한다.
     "PURCHASE_PATTERN": {},
 }
 
@@ -243,8 +247,12 @@ class EntityActionKind(StrEnum):
 
 @dataclass(frozen=True)
 class EntityAction:
-    """raw_prompt 좌표 기준 span 별 L6 처리 결과. 원문 값은 담지 않는다(PII 보호)."""
+    """raw_prompt 좌표 기준 span 별 L6 처리 결과. 원문 값은 담지 않는다(PII 보호).
 
+    (segment_id, start_idx, end_idx) 는 L5 EntityPolicy 와 같은 키라 좌표로 조인할 수 있다.
+    """
+
+    segment_id: str
     start_idx: int
     end_idx: int
     entity_type: str
@@ -416,7 +424,14 @@ class Tokenizer:
         detected_entities: list[Any],
         policy_action: str
         | None = None,  # L5 의 요청 전체 보호 정책 (TOKENIZE / GENERALIZE / 그 외)
+        entity_policies: Mapping[tuple[str, int, int], str] | None = None,
     ) -> TokenizationResult:
+        """entity_policies: L5 항목별 정책. 키는 (segment_id, start_idx, end_idx).
+
+        항목별 값이 있으면 그것을, 없으면 요청 단위 policy_action 을 쓴다.
+        직접식별자(BASE_SPECS)와 PURCHASE_PATTERN 은 어느 쪽이든 정책과 무관하다
+        (전자는 항상 가역 치환, 후자는 항상 원문 유지).
+        """
         vault_mapping: dict[str, str] = {}
         token_types: dict[str, str] = {}
         placements: dict[str, int] = {}
@@ -430,6 +445,7 @@ class Tokenizer:
         for e in self._resolve_overlaps(detected_entities):
             start, end, original = e.start_idx, e.end_idx, e.original_value
             entity_type = str(e.entity_type)
+            segment_id = getattr(e, "segment_id", "seg-1")
 
             if not (0 <= start < end <= len(raw_prompt)) or raw_prompt[start:end] != original:
                 raise EntityMismatchError(
@@ -440,24 +456,35 @@ class Tokenizer:
                 if self.strict:
                     raise UnsupportedEntityError(entity_type)
                 skipped.append(entity_type)
-                actions.append(EntityAction(start, end, entity_type, EntityActionKind.SKIPPED))
+                actions.append(
+                    EntityAction(segment_id, start, end, entity_type, EntityActionKind.SKIPPED)
+                )
                 continue
 
-            spec = resolve_spec(entity_type, policy_action)
+            action = policy_action
+            if entity_policies is not None:
+                action = entity_policies.get((segment_id, start, end), policy_action)
+            spec = resolve_spec(entity_type, action)
             if spec is None:
                 passthrough.append(entity_type)
-                actions.append(EntityAction(start, end, entity_type, EntityActionKind.KEEP))
+                actions.append(
+                    EntityAction(segment_id, start, end, entity_type, EntityActionKind.KEEP)
+                )
                 continue
 
             if spec.strategy is Strategy.GENERALIZE:
                 replacement = GENERALIZERS[spec.generalizer](original)
-                actions.append(EntityAction(start, end, entity_type, EntityActionKind.GENERALIZE))
+                actions.append(
+                    EntityAction(segment_id, start, end, entity_type, EntityActionKind.GENERALIZE)
+                )
             else:
                 replacement = self._bind(session_id, raw_prompt, entity_type, spec, original, cache)
                 vault_mapping[replacement] = original
                 token_types[replacement] = entity_type
                 placements[replacement] = placements.get(replacement, 0) + 1
-                actions.append(EntityAction(start, end, entity_type, EntityActionKind.TOKENIZE))
+                actions.append(
+                    EntityAction(segment_id, start, end, entity_type, EntityActionKind.TOKENIZE)
+                )
 
             pieces.append(raw_prompt[cursor:start])
             pieces.append(replacement)
