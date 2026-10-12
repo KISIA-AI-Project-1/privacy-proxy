@@ -11,17 +11,14 @@ uv run uvicorn privacy_proxy.main:app --reload --port 8000
 from collections.abc import AsyncIterable
 from typing import Any, Literal, cast
 
-import boto3
 from fastapi import Depends, FastAPI, HTTPException
+from starlette.concurrency import run_in_threadpool
 
 from privacy_proxy import __version__
 from privacy_proxy.adapters import get_current_user
 from privacy_proxy.config import get_settings
-from privacy_proxy.pipeline import run_privacy_pipeline
+from privacy_proxy.pipeline import _get_l3_service, _get_l6_tokenizer, run_privacy_pipeline
 from privacy_proxy.schemas import ProxyContext, UserContext
-
-s3_client = boto3.client("s3", region_name="ap-northeast-2")
-BUCKET_NAME = "privacy-proxy-storage"
 
 app = FastAPI(
     title="privacy-proxy",
@@ -34,6 +31,20 @@ app = FastAPI(
 async def healthz() -> dict[str, str | Literal["ok"]]:
     """로드밸런서·CI용 헬스체크. 비밀값을 노출하지 않는다."""
     return {"status": "ok", "version": __version__}
+
+
+@app.get("/readyz")
+async def readyz() -> dict[str, str]:
+    """Load and warm detection/Vault before reporting readiness."""
+    try:
+        if not get_settings().proxy_api_key.get_secret_value().strip():
+            raise ValueError("PROXY_API_KEY_REQUIRED")
+        l3 = await run_in_threadpool(_get_l3_service)
+        await run_in_threadpool(l3.analyze, raw_prompt="시연 준비 확인", segment_id="warmup")
+        await run_in_threadpool(_get_l6_tokenizer)
+    except Exception:
+        raise HTTPException(status_code=503, detail="PRIVACY_DEPENDENCIES_NOT_READY") from None
+    return {"status": "ready"}
 
 
 def require_demo_mode() -> None:
@@ -179,39 +190,19 @@ async def process_demo_chat(
             "level": context.risk_level,
             "reasons": context.risk_reasons,
             "policy_action": context.policy_action,
+            "policy_scope": "request",
         },
         "anonymization": {
             "text": context.anonymized_prompt,
             "tokens": tokens,
+            "entity_actions": context.entity_actions,
         },
         "upstream": {
             "request_body": context.upstream_request_body,
         },
         "response": {
             "text": final_text,
+            "before_restore": context.upstream_response_text,
         },
         "latency_ms": dict(context.latency_ms),
     }
-
-
-@app.post("/v1/upload-log")
-async def upload_log_to_s3(
-    filename: str,
-    content: str,
-) -> dict[str, Any]:
-    """S3 버킷으로 마스킹 결과·로그 텍스트를 저장한다."""
-    try:
-        s3_client.put_object(
-            Bucket=BUCKET_NAME,
-            Key=f"logs/{filename}",
-            Body=content.encode("utf-8"),
-        )
-        return {
-            "status": "success",
-            "message": f"Successfully uploaded {filename} to S3",
-        }
-    except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail="S3 업로드 실패",
-        ) from exc

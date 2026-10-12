@@ -1,16 +1,16 @@
 import copy
-import os
 import re
+import secrets
 from typing import Any
 
 from fastapi import Header, HTTPException
 
+from privacy_proxy.config import get_settings
 from privacy_proxy.schemas import ParsedRequest, TextSegment, UserContext
 
 # =============================================================
 # [L1: 인증·인가 모듈]
 # =============================================================
-PROXY_API_KEY = os.getenv("PROXY_API_KEY", "example-proxy-key")
 
 
 async def get_current_user(authorization: str = Header(default="")) -> UserContext:
@@ -20,9 +20,12 @@ async def get_current_user(authorization: str = Header(default="")) -> UserConte
     - 키가 없거나 틀리면 401 Unauthorized 에러 발생
     - 통과 시 요청자 정보(UserContext) 반환
     """
-    expected = f"Bearer {PROXY_API_KEY}"
+    api_key = get_settings().proxy_api_key.get_secret_value().strip()
+    expected = f"Bearer {api_key}"
 
-    if not authorization or authorization != expected:
+    if not api_key or not secrets.compare_digest(
+        authorization.encode("utf-8"), expected.encode("utf-8")
+    ):
         raise HTTPException(
             status_code=401,
             detail="Invalid proxy credential",
