@@ -1,12 +1,18 @@
 import os
+from time import perf_counter
 from typing import TYPE_CHECKING, Any
 
 from l4.recognizers import (
+    find_account_number,
+    find_address_detail,
+    find_address_lot,
+    find_address_road,
     find_customer_id,
     find_customs_clearance_id,
     find_order_id,
     find_tracking_number,
 )
+from l4.sensitive.engine import find_state
 from redis import Redis
 
 from audit.logger import audit_log_l9
@@ -21,6 +27,7 @@ from privacy_proxy.schemas import (
 )
 from privacy_proxy.vault import Tokenizer, VaultCrypto
 from privacy_proxy.vault.store import InMemoryVaultStore, RedisVaultStore, VaultStore
+from privacy_proxy.vault.tokenizer import resolve_spec
 from restore.restorer import restore_l8
 from upstream.llm_client import call_gemini_l7
 
@@ -201,6 +208,7 @@ async def run_privacy_pipeline(
         return await audit_log_l9(context)
 
     # [L3] 전체 원문 기준 탐지
+    started = perf_counter()
     try:
         l3_service = _get_l3_service()
         segment = parsed.segments[0]
@@ -219,10 +227,12 @@ async def run_privacy_pipeline(
     except Exception:
         context.status = "failed"
         context.error = "L3_DETECTION_FAILED"
+    context.latency_ms["L3"] = round((perf_counter() - started) * 1000, 3)
 
     # [L4] 세그먼트 기준 탐지 후 전체 원문 위치로 변환
     if context.status == "success":
         try:
+            started = perf_counter()
             offset = 0
 
             for seg in parsed.segments:
@@ -253,12 +263,24 @@ async def run_privacy_pipeline(
                     )
                 )
 
+                for recognizer in (
+                    find_account_number,
+                    find_address_road,
+                    find_address_lot,
+                    find_address_detail,
+                ):
+                    l4_results.extend(recognizer(seg.text, segment_id=seg.segment_id))
+                state_results = find_state(seg.text, segment_id=seg.segment_id)
+                l4_results.extend(state_results)
+                # Purchase and NER await their owners' L6/runtime integration.
+
                 for det in l4_results:
                     context.detected_entities.append(_to_detected_pii(det, offset))
 
                 offset += len(seg.text) + 1
 
             context.validate_detected_spans()
+            context.latency_ms["L4"] = round((perf_counter() - started) * 1000, 3)
 
         except Exception:
             context.status = "failed"
@@ -276,6 +298,7 @@ async def run_privacy_pipeline(
     # [L6] 실제 가명화
     if context.status == "success":
         try:
+            started = perf_counter()
             tokenizer = _get_l6_tokenizer()
 
             result = tokenizer.anonymize(
@@ -288,6 +311,23 @@ async def run_privacy_pipeline(
             context.anonymized_prompt = result.anonymized_prompt
             context.vault_mapping = result.vault_mapping
             context.token_types = result.token_types
+            context.entity_actions = [
+                {
+                    "start_idx": entity.start_idx,
+                    "end_idx": entity.end_idx,
+                    "entity_type": str(entity.entity_type),
+                    "action": (
+                        "ALLOW"
+                        if (spec := resolve_spec(str(entity.entity_type), context.policy_action))
+                        is None
+                        else "GENERALIZE"
+                        if spec.strategy == "GENERALIZE"
+                        else "TOKENIZE"
+                    ),
+                }
+                for entity in context.detected_entities
+            ]
+            context.latency_ms["L6"] = round((perf_counter() - started) * 1000, 3)
 
         except Exception:
             context.status = "failed"

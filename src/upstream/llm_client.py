@@ -2,6 +2,7 @@ import copy
 import json
 import os
 from collections.abc import AsyncGenerator, AsyncIterable
+from time import perf_counter
 from typing import Any
 
 import httpx
@@ -35,6 +36,7 @@ async def _guard_l7_stream(
     source: AsyncIterable[str],
 ) -> AsyncGenerator[str, None]:
     """실제 요청·응답 스트리밍 중 발생하는 오류를 기록한다."""
+    started = perf_counter()
     try:
         async for chunk in source:
             yield chunk
@@ -42,6 +44,8 @@ async def _guard_l7_stream(
         context.status = "failed"
         context.error = "L7_STREAM_FAILED"
         raise
+    finally:
+        context.latency_ms["L7_stream"] = round((perf_counter() - started) * 1000, 3)
 
 
 async def call_gemini_l7(context: ProxyContext) -> ProxyContext:

@@ -153,6 +153,8 @@ class ProxyContext(BaseModel):
     anonymized_prompt: str | None = None
     vault_mapping: dict[str, str] = Field(default_factory=dict)
     token_types: dict[str, str] = Field(default_factory=dict)
+    entity_actions: list[dict[str, Any]] = Field(default_factory=list)
+    upstream_response_text: str = Field(default="", exclude=True, repr=False)
 
     reconstructed_body: dict[str, Any] = Field(default_factory=dict)
     upstream_request_body: dict[str, Any] = Field(
