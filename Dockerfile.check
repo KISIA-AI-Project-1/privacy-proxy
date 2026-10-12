@@ -1,0 +1,34 @@
+# 1. 파이썬 3.11 공식 리눅스 이미지 사용
+FROM python:3.11-slim
+
+# 검사 환경에서 사용할 uv 가져오기
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# 2. 로그 출력 및 파이썬 실행 설정
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    UV_PYTHON_DOWNLOADS=never \
+    PYTHONPATH=/app/src:/app
+
+# 3. 컨테이너 내부 작업 폴더
+WORKDIR /app
+
+# 4. 필수 리눅스 패키지 설치
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# 5. 프로젝트 소스와 의존성 설정 복사
+# 검사 대상인 src, l4, tests와 uv.lock을 함께 포함한다.
+COPY . /app
+
+# 6. 잠금 파일 기준으로 프로젝트와 검사 도구 설치
+RUN uv sync --locked --group dev --extra detection --python /usr/local/bin/python
+
+# 7. 설치한 가상환경의 실행 파일 사용
+ENV PATH="/app/.venv/bin:$PATH"
+
+# 8. 기본 실행은 mypy 검사
+# pyproject.toml에 지정된 src, l4를 검사한다.
+CMD ["mypy"]

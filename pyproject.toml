@@ -11,6 +11,13 @@ dependencies = [
     "pydantic-settings>=2.7",
     "redis>=5.2",
     "cryptography>=44.0",
+    "boto3>=1.34",
+    # l4/recognizers/가 전화번호 배제에 쓴다(L3와 동일 방식). presidio-analyzer(detection
+    # extra)의 전이 의존성으로 이미 lock엔 있었지만, recognizers는 extra 없이 단독으로
+    # 돌아야 하므로(torch 불필요) 직접 의존성으로 명시한다.
+    "phonenumbers>=9.0",
+    # L4 sensitive recognizers load their bundled YAML lexicons at runtime.
+    "PyYAML>=6.0",
 ]
 
 # 탐지 계층(L3/L4)은 모델 의존성이 무겁다(torch, spacy, transformers).
@@ -20,9 +27,39 @@ dependencies = [
 detection = [
     "presidio-analyzer>=2.2",
     "presidio-anonymizer>=2.2",
-    "spacy>=3.8",
+    "spacy==3.8.16",
+    "ko-core-news-lg @ https://github.com/explosion/spacy-models/releases/download/ko_core_news_lg-3.8.0/ko_core_news_lg-3.8.0-py3-none-any.whl",
+    "en-core-web-lg @ https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.8.0/en_core_web_lg-3.8.0-py3-none-any.whl",
     "transformers>=4.48",
     "torch>=2.5",
+]
+
+# 정규식 기반 L3·L4 시연용. 모델 기반 NER은 포함하지 않는다.
+detection-lite = [
+    "presidio-analyzer>=2.2",
+    "presidio-anonymizer>=2.2",
+    "spacy>=3.8",
+]
+
+# 모델을 사용하는 L3용. L4의 torch/transformers는 포함하지 않는다.
+detection-l3 = [
+    "presidio-analyzer>=2.2",
+    "presidio-anonymizer>=2.2",
+    "spacy==3.8.16",
+    "ko-core-news-lg @ https://github.com/explosion/spacy-models/releases/download/ko_core_news_lg-3.8.0/ko_core_news_lg-3.8.0-py3-none-any.whl",
+    "en-core-web-lg @ https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.8.0/en_core_web_lg-3.8.0-py3-none-any.whl",
+]
+
+# L4 NER 학습 전용. 런타임 추론에는 필요 없어서 detection과 분리한다.
+#   uv sync --extra training
+training = [
+    "transformers>=4.48",
+    "torch>=2.5",
+    "datasets>=3.2",
+    "seqeval>=1.2",
+    "accelerate>=1.3",
+    "matplotlib>=3.10",
+    "pandas>=2.2",
 ]
 
 [dependency-groups]
@@ -31,7 +68,9 @@ dev = [
     "pytest-cov>=6.0",
     "pytest-asyncio>=0.25",
     "mypy>=1.15",
-    "ruff>=0.9.6",
+    # .pre-commit-config.yaml의 ruff rev와 맞춰둔다. 버전이 벌어지면
+    # 로컬 `ruff check`는 통과하는데 커밋 훅에서 막히는 일이 생긴다.
+    "ruff>=0.16.5",
     "pre-commit>=4.1",
     "types-redis>=4.6",
 ]
@@ -40,13 +79,16 @@ dev = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [tool.hatch.build.targets.wheel]
-packages = ["src/privacy_proxy"]
+packages = ["src/privacy_proxy", "src/audit", "src/restore", "src/upstream"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-src = ["src", "tests"]
+src = ["src", "l4", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "S", "C4", "SIM", "RUF"]
@@ -54,17 +96,26 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "S", "C4", "SIM", "RUF"]
 ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101"]
+# S101: 테스트의 assert는 정상.
+# N802: 한글 테스트 함수명은 str.islower()가 항상 False라 무조건 걸린다.
+#       BIO 경계 규칙처럼 미묘한 도메인 규칙은 한글 이름이 훨씬 잘 읽혀서 허용한다.
+"tests/**" = ["S101", "N802"]
+# 노트북은 셀 단위로 위에서 아래로 읽는 문서다. 라이브러리 기준을 그대로 대면
+# 오히려 읽기 나빠진다. 관용구에 해당하는 것만 푼다.
+#   E402 셀 중간 import / S101 가드용 assert / F811 셀 간 재정의
+#   S603,S607 nvidia-smi·git 호출
+"*.ipynb" = ["E402", "S101", "F811", "S603", "S607"]
 
 [tool.mypy]
 python_version = "3.11"
-files = ["src"]
+files = ["src", "l4"]
 strict = true
 # presidio, spacy, transformers는 타입 스텁을 제공하지 않는다.
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src", "."]
 addopts = "-q --strict-markers"
 asyncio_mode = "auto"
 

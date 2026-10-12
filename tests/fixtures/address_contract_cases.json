@@ -1,0 +1,240 @@
+{
+    "version":  "R7-S1-D-v1",
+    "policy":  "FULL_ADDRESS_ONLY",
+    "cases":  [
+                  {
+                      "id":  "P01",
+                      "family":  "ROAD_FULL",
+                      "text":  "서울특별시 강남구 테헤란로 152",
+                      "expected_l3_address":  true,
+                      "expected_outcome":  "MATCH_CORE",
+                      "expected_span":  "서울특별시 강남구 테헤란로 152",
+                      "delegation":  null
+                  },
+                  {
+                      "id":  "P02",
+                      "family":  "ROAD_MINIMUM",
+                      "text":  "강남구 테헤란로 152",
+                      "expected_l3_address":  true,
+                      "expected_outcome":  "MATCH_CORE",
+                      "expected_span":  "강남구 테헤란로 152",
+                      "delegation":  null
+                  },
+                  {
+                      "id":  "P03",
+                      "family":  "ROAD_FULL_DETAIL",
+                      "text":  "서울특별시 강남구 테헤란로 152 ABC빌딩 1502호",
+                      "expected_l3_address":  true,
+                      "expected_outcome":  "MATCH_WITH_DETAIL",
+                      "expected_span":  "서울특별시 강남구 테헤란로 152 ABC빌딩 1502호",
+                      "delegation":  null
+                  },
+                  {
+                      "id":  "P04",
+                      "family":  "LOT_FULL",
+                      "text":  "서울특별시 강남구 역삼동 123-45",
+                      "expected_l3_address":  true,
+                      "expected_outcome":  "MATCH_CORE",
+                      "expected_span":  "서울특별시 강남구 역삼동 123-45",
+                      "delegation":  null
+                  },
+                  {
+                      "id":  "P05",
+                      "family":  "LOT_MINIMUM",
+                      "text":  "강남구 역삼동 123-45",
+                      "expected_l3_address":  true,
+                      "expected_outcome":  "MATCH_CORE",
+                      "expected_span":  "강남구 역삼동 123-45",
+                      "delegation":  null
+                  },
+                  {
+                      "id":  "P06",
+                      "family":  "LOT_FULL_DETAIL",
+                      "text":  "서울특별시 강남구 역삼동 123-45 101동 1203호",
+                      "expected_l3_address":  true,
+                      "expected_outcome":  "MATCH_WITH_DETAIL",
+                      "expected_span":  "서울특별시 강남구 역삼동 123-45 101동 1203호",
+                      "delegation":  null
+                  },
+                  {
+                      "id":  "P07",
+                      "family":  "SEJONG_ROAD_EXCEPTION",
+                      "text":  "세종특별자치시 한누리대로 2130",
+                      "expected_l3_address":  true,
+                      "expected_outcome":  "MATCH_CORE",
+                      "expected_span":  "세종특별자치시 한누리대로 2130",
+                      "delegation":  null
+                  },
+                  {
+                      "id":  "P08",
+                      "family":  "RURAL_ROAD",
+                      "text":  "경기도 양평군 양서면 북한강로 123",
+                      "expected_l3_address":  true,
+                      "expected_outcome":  "MATCH_CORE",
+                      "expected_span":  "경기도 양평군 양서면 북한강로 123",
+                      "delegation":  null
+                  },
+                  {
+                      "id":  "P09",
+                      "family":  "RURAL_LOT",
+                      "text":  "경기도 양평군 양서면 목왕리 123-4",
+                      "expected_l3_address":  true,
+                      "expected_outcome":  "MATCH_CORE",
+                      "expected_span":  "경기도 양평군 양서면 목왕리 123-4",
+                      "delegation":  null
+                  },
+                  {
+                      "id":  "N01",
+                      "family":  "ADMIN_ONLY",
+                      "text":  "서울특별시 강남구",
+                      "expected_l3_address":  false,
+                      "expected_outcome":  "NO_ADDRESS_LOCATION_ONLY",
+                      "expected_span":  null,
+                      "delegation":  "LOCATION"
+                  },
+                  {
+                      "id":  "N02",
+                      "family":  "ROAD_FRAGMENT",
+                      "text":  "테헤란로 152",
+                      "expected_l3_address":  false,
+                      "expected_outcome":  "NO_ADDRESS_PARTIAL_ROAD",
+                      "expected_span":  null,
+                      "delegation":  "ADDRESS_ROAD"
+                  },
+                  {
+                      "id":  "N03",
+                      "family":  "LOT_FRAGMENT",
+                      "text":  "역삼동 123-45",
+                      "expected_l3_address":  false,
+                      "expected_outcome":  "NO_ADDRESS_PARTIAL_LOT",
+                      "expected_span":  null,
+                      "delegation":  "ADDRESS_LOT"
+                  },
+                  {
+                      "id":  "N04",
+                      "family":  "DETAIL_FRAGMENT",
+                      "text":  "ABC빌딩 1502호",
+                      "expected_l3_address":  false,
+                      "expected_outcome":  "NO_ADDRESS_DETAIL_ONLY",
+                      "expected_span":  null,
+                      "delegation":  "ADDRESS_DETAIL"
+                  },
+                  {
+                      "id":  "N05",
+                      "family":  "UNIT_ONLY",
+                      "text":  "1502호",
+                      "expected_l3_address":  false,
+                      "expected_outcome":  "NO_ADDRESS_DETAIL_ONLY",
+                      "expected_span":  null,
+                      "delegation":  "ADDRESS_DETAIL"
+                  },
+                  {
+                      "id":  "N06",
+                      "family":  "NEGATIVE_ORDER_NUMBER",
+                      "text":  "주문번호는 152-1502입니다.",
+                      "expected_l3_address":  false,
+                      "expected_outcome":  "NO_ADDRESS_NON_ADDRESS_NUMBER",
+                      "expected_span":  null,
+                      "delegation":  null
+                  },
+                  {
+                      "id":  "N07",
+                      "family":  "SIDO_ROAD_WITHOUT_LOCAL_ANCHOR",
+                      "text":  "서울특별시 테헤란로 152",
+                      "expected_l3_address":  false,
+                      "expected_outcome":  "NO_ADDRESS_V1_MISSING_LOCAL_ADMIN_ANCHOR",
+                      "expected_span":  null,
+                      "delegation":  "ADDRESS_ROAD"
+                  },
+                  {
+                      "id":  "N08",
+                      "family":  "ADMIN_BARE_NUMBER",
+                      "text":  "서울특별시 강남구 123-45",
+                      "expected_l3_address":  false,
+                      "expected_outcome":  "NO_ADDRESS_MISSING_ROAD_OR_LOCALITY",
+                      "expected_span":  null,
+                      "delegation":  null
+                  },
+                  {
+                      "id":  "N09",
+                      "family":  "ROAD_NAME_ONLY",
+                      "text":  "테헤란로",
+                      "expected_l3_address":  false,
+                      "expected_outcome":  "NO_ADDRESS_INCOMPLETE",
+                      "expected_span":  null,
+                      "delegation":  "ADDRESS_ROAD"
+                  },
+                  {
+                      "id":  "N10",
+                      "family":  "LOT_NUMBER_ONLY",
+                      "text":  "123-45",
+                      "expected_l3_address":  false,
+                      "expected_outcome":  "NO_ADDRESS_INCOMPLETE",
+                      "expected_span":  null,
+                      "delegation":  null
+                  },
+                  {
+                      "id":  "N11",
+                      "family":  "ROAD_WITHOUT_BUILDING_NUMBER",
+                      "text":  "서울특별시 강남구 테헤란로",
+                      "expected_l3_address":  false,
+                      "expected_outcome":  "NO_ADDRESS_MISSING_BUILDING_NUMBER",
+                      "expected_span":  null,
+                      "delegation":  null
+                  },
+                  {
+                      "id":  "N12",
+                      "family":  "DETAIL_WITH_ADMIN_BUT_NO_CORE",
+                      "text":  "서울특별시 강남구 ABC빌딩 1502호",
+                      "expected_l3_address":  false,
+                      "expected_outcome":  "NO_ADDRESS_MISSING_ROAD_OR_LOT_CORE",
+                      "expected_span":  null,
+                      "delegation":  "ADDRESS_DETAIL"
+                  },
+                  {
+                      "id":  "B01",
+                      "family":  "LEADING_CONTEXT",
+                      "text":  "배송지는 서울특별시 강남구 테헤란로 152입니다.",
+                      "expected_l3_address":  true,
+                      "expected_outcome":  "MATCH_TRIM_CONTEXT_AND_ENDING",
+                      "expected_span":  "서울특별시 강남구 테헤란로 152",
+                      "delegation":  null
+                  },
+                  {
+                      "id":  "B02",
+                      "family":  "TRAILING_POSTPOSITION",
+                      "text":  "서울특별시 강남구 테헤란로 152로 보내주세요.",
+                      "expected_l3_address":  true,
+                      "expected_outcome":  "MATCH_EXCLUDE_TRAILING_POSTPOSITION",
+                      "expected_span":  "서울특별시 강남구 테헤란로 152",
+                      "delegation":  null
+                  },
+                  {
+                      "id":  "B03",
+                      "family":  "LOT_SENTENCE_ENDING",
+                      "text":  "서울특별시 강남구 역삼동 123-45입니다.",
+                      "expected_l3_address":  true,
+                      "expected_outcome":  "MATCH_EXCLUDE_SENTENCE_ENDING",
+                      "expected_span":  "서울특별시 강남구 역삼동 123-45",
+                      "delegation":  null
+                  },
+                  {
+                      "id":  "B04",
+                      "family":  "LEADING_LABEL_AND_PUNCTUATION",
+                      "text":  "주소: 서울특별시 강남구 테헤란로 152, 연락 바랍니다.",
+                      "expected_l3_address":  true,
+                      "expected_outcome":  "MATCH_EXCLUDE_LABEL_AND_PUNCTUATION",
+                      "expected_span":  "서울특별시 강남구 테헤란로 152",
+                      "delegation":  null
+                  },
+                  {
+                      "id":  "B05",
+                      "family":  "DETAIL_SENTENCE_ENDING",
+                      "text":  "서울특별시 강남구 테헤란로 152 ABC빌딩 1502호입니다.",
+                      "expected_l3_address":  true,
+                      "expected_outcome":  "MATCH_DETAIL_EXCLUDE_SENTENCE_ENDING",
+                      "expected_span":  "서울특별시 강남구 테헤란로 152 ABC빌딩 1502호",
+                      "delegation":  null
+                  }
+              ]
+}

@@ -1,0 +1,37 @@
+# 1. 파이썬 3.11 환경
+FROM python:3.11-slim
+
+# 2. 잠금 파일 기준 설치를 위한 uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# 3. 실행 환경 설정
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    UV_PYTHON_DOWNLOADS=never \
+    PYTHONPATH=/app/src:/app \
+    PATH="/app/.venv/bin:$PATH"
+
+WORKDIR /app
+
+# 4. 의존성 설정 먼저 복사
+COPY pyproject.toml uv.lock /app/
+
+# 5. 기본 L3 탐지에 필요한 한국어·영어 spaCy 모델 설치
+RUN uv sync --locked --no-dev --extra detection-l3 \
+    --no-install-project --python /usr/local/bin/python
+
+# 6. 실제 소스 복사
+COPY src/ /app/src/
+COPY l4/ /app/l4/
+
+# 7. 프로젝트 설치
+RUN uv sync --locked --no-dev --extra detection-l3 \
+    --no-editable --python /usr/local/bin/python
+
+# 8. 서버 포트
+EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=60s --start-period=120s \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=55)"
+
+# 9. 서버 실행
+CMD ["uvicorn", "privacy_proxy.main:app", "--host", "0.0.0.0", "--port", "8000"]

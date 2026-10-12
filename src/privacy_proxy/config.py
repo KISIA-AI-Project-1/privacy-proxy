@@ -1,6 +1,7 @@
 """환경 변수 로딩. 값 목록과 설명은 .env.example 참고."""
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -23,11 +24,17 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr = SecretStr("")
     openai_api_key: SecretStr = SecretStr("")
 
+    vault_backend: Literal["memory", "redis"] = "memory"
     redis_url: str = "redis://localhost:6379/0"
     vault_encryption_key: SecretStr = SecretStr("")
     vault_ttl_seconds: int = Field(default=3600, gt=0)
 
     log_level: str = "INFO"
+    demo_mode: bool = False
+
+    audit_s3_enabled: bool = False
+    audit_s3_bucket: str = ""
+    audit_s3_region: str = "ap-northeast-2"
 
 
 @lru_cache
