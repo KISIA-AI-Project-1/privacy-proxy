@@ -18,6 +18,7 @@ from redis import Redis
 from audit.logger import audit_log_l9
 from privacy_proxy.adapters import AdapterRouter
 from privacy_proxy.config import get_settings
+from privacy_proxy.l4_ner import detect_l4_ner
 from privacy_proxy.risk import run_l5_risk_scoring
 from privacy_proxy.schemas import (
     DetectedPII,
@@ -269,9 +270,26 @@ async def run_privacy_pipeline(
                     find_address_lot,
                     find_address_detail,
                 ):
-                    l4_results.extend(recognizer(seg.text, segment_id=seg.segment_id))
-                l4_results.extend(find_sensitive(seg.text, segment_id=seg.segment_id))
-                # NER awaits its owner's model/runtime integration.
+                    l4_results.extend(
+                        recognizer(
+                            seg.text,
+                            segment_id=seg.segment_id,
+                        )
+                    )
+
+                l4_results.extend(
+                    find_sensitive(
+                        seg.text,
+                        segment_id=seg.segment_id,
+                    )
+                )
+
+                l4_results.extend(
+                    detect_l4_ner(
+                        seg.text,
+                        segment_id=seg.segment_id,
+                    )
+                )
 
                 for det in l4_results:
                     context.detected_entities.append(_to_detected_pii(det, offset))
