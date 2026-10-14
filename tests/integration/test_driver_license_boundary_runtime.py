@@ -183,13 +183,31 @@ class DriverLicenseCompactContextRuntimeTests(unittest.TestCase):
             entities=["KR_DRIVER_LICENSE"],
         )
 
-    def test_bare_compact_is_not_driver_license(self):
+    def test_bare_compact_preserves_baseline_driver_candidate(self):
+        value = "112412345601"
+
+        detections = self.detect(value)
+
         self.assertEqual(
-            self.detect("112412345601"),
-            [],
+            len(detections),
+            1,
         )
 
-    def test_compact_requires_explicit_license_context(
+        self.assertEqual(
+            detections[0].original_value,
+            value,
+        )
+
+        self.assertIs(
+            detections[0].tier,
+            DetectionTier.DETERMINISTIC,
+        )
+
+        self.assertIsNone(
+            detections[0].confidence,
+        )
+
+    def test_explicit_license_context_preserves_compact_driver(
         self,
     ):
         value = "112412345601"
@@ -235,7 +253,7 @@ class DriverLicenseCompactContextRuntimeTests(unittest.TestCase):
 
                 self.assertIsNone(detection.confidence)
 
-    def test_service_identifier_contexts_do_not_emit_driver(
+    def test_direct_competing_identifier_contexts_do_not_emit_driver(
         self,
     ):
         value = "112412345601"
@@ -246,8 +264,6 @@ class DriverLicenseCompactContextRuntimeTests(unittest.TestCase):
             f"택배번호 {value}",
             f"주문번호 {value}",
             f"고객번호 {value}",
-            f"({value})",
-            f"P{value}",
         )
 
         for raw_prompt in cases:
@@ -258,6 +274,46 @@ class DriverLicenseCompactContextRuntimeTests(unittest.TestCase):
                     self.detect(raw_prompt),
                     [],
                 )
+
+    def test_neutral_compact_contexts_preserve_baseline(
+        self,
+    ):
+        value = "112412345601"
+
+        cases = (
+            value,
+            f"식별값 {value}",
+            f"참조값: {value}",
+            f"송장 관련 문의입니다. 식별값 {value}",
+            f"주문 관련 문의입니다. 참조값: {value}",
+            f"({value})",
+        )
+
+        for raw_prompt in cases:
+            with self.subTest(
+                raw_prompt=raw_prompt,
+            ):
+                detections = self.detect(raw_prompt)
+
+                self.assertEqual(
+                    len(detections),
+                    1,
+                )
+
+                self.assertEqual(
+                    detections[0].original_value,
+                    value,
+                )
+
+    def test_ascii_prefixed_compact_is_not_driver(
+        self,
+    ):
+        value = "112412345601"
+
+        self.assertEqual(
+            self.detect(f"P{value}"),
+            [],
+        )
 
     def test_space_separated_license_is_preserved(
         self,
