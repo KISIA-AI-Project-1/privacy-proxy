@@ -314,3 +314,100 @@ class DriverLicenseCompactContextRuntimeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+# DL-TRACK-07B reviewer direct-anchor regressions
+
+_DL_TRACK_REVIEW_COMPACT = "112412345601"
+
+
+def _dl_track_review_driver_values(text: str) -> list[str]:
+    from privacy_proxy.l3.service import L3AnalyzerService
+
+    results = L3AnalyzerService().analyze(
+        text,
+        "dl-track-review-regression",
+        entities=["KR_DRIVER_LICENSE"],
+    )
+
+    values: list[str] = []
+
+    for result in results:
+        entity_type = getattr(result, "entity_type", None)
+
+        if hasattr(entity_type, "value"):
+            entity_type = entity_type.value
+
+        if str(entity_type) != "KR_DRIVER_LICENSE":
+            continue
+
+        original_value = getattr(
+            result,
+            "original_value",
+            None,
+        )
+
+        if original_value is not None:
+            values.append(str(original_value))
+
+    return values
+
+
+def test_review_direct_competing_anchors_suppress_compact_driver() -> None:
+    cases = (
+        "송장번호: 112412345601",
+        "송장번호 112412345601",
+        "운송장번호\uff1a112412345601",
+        "주문번호: 112412345601",
+        "고객번호: 112412345601",
+    )
+
+    for text in cases:
+        values = _dl_track_review_driver_values(text)
+
+        assert _DL_TRACK_REVIEW_COMPACT not in values, text
+
+
+def test_review_nearby_competing_wording_preserves_direct_driver_anchor() -> None:
+    cases = (
+        "송장 관련 문의입니다. 운전면허번호 112412345601",
+        "주문번호는 별도로 확인했습니다. 면허번호: 112412345601",
+        "고객번호를 확인한 뒤 운전면허번호\uff1a112412345601",
+    )
+
+    for text in cases:
+        values = _dl_track_review_driver_values(text)
+
+        assert _DL_TRACK_REVIEW_COMPACT in values, text
+
+
+def test_review_direct_relation_wins_when_both_anchor_types_exist() -> None:
+    driver_direct = "송장번호는 별도이며 운전면허번호: 112412345601"
+
+    competing_direct = "운전면허번호는 별도로 제출했고 송장번호: 112412345601"
+
+    assert _DL_TRACK_REVIEW_COMPACT in _dl_track_review_driver_values(driver_direct)
+
+    assert _DL_TRACK_REVIEW_COMPACT not in _dl_track_review_driver_values(competing_direct)
+
+
+def test_review_structured_driver_survives_nearby_competing_wording() -> None:
+    hyphenated = "송장 관련 문의 후 운전면허번호는 12-34-567890-12입니다."
+
+    spaced = "주문 관련 문의입니다. 면허번호는 12 34 567890 12입니다."
+
+    assert "12-34-567890-12" in _dl_track_review_driver_values(hyphenated)
+
+    assert "12 34 567890 12" in _dl_track_review_driver_values(spaced)
+
+
+def test_review_tracking_collision_remains_l4_tracking_number() -> None:
+    from l4.recognizers import find_tracking_number
+
+    text = "송장번호: 112412345601"
+
+    driver_values = _dl_track_review_driver_values(text)
+
+    tracking_results = find_tracking_number(text)
+
+    assert _DL_TRACK_REVIEW_COMPACT not in driver_values
+    assert len(tracking_results) >= 1
