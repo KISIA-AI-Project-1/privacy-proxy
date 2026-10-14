@@ -31,6 +31,8 @@ class Settings(BaseSettings):
 
     log_level: str = "INFO"
     demo_mode: bool = False
+    l4_ner_enabled: bool = False
+    l4_ner_model_path: str = ""
 
     audit_s3_enabled: bool = False
     audit_s3_bucket: str = ""

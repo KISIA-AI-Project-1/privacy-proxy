@@ -6,9 +6,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from privacy_proxy.adapters import get_current_user
+from privacy_proxy.risk.score import assess_risk
 from privacy_proxy.schemas import (
     DetectedPII,
     DetectionTier,
+    EntityOutcome,
     ParsedRequest,
     ProxyContext,
     UserContext,
@@ -134,6 +136,18 @@ def test_demo_returns_stage_results(
         },
         final_response=restored_stream(),
     )
+    assess_risk(context)
+
+    context.entity_outcomes = [
+        EntityOutcome(
+            segment_id="seg-1",
+            start_idx=0,
+            end_idx=len(original),
+            entity_type="PHONE_NUMBER",
+            action="TOKENIZE",
+        )
+    ]
+
     pipeline.return_value = context
 
     body = {
@@ -150,7 +164,22 @@ def test_demo_returns_stage_results(
     assert data["detection"]["entities"][0]["entity_type"] == "PHONE_NUMBER"
     assert data["risk"]["score"] == 80.0
     assert data["risk"]["policy_action"] == "TOKENIZE"
+    assert data["risk"]["entity_policies"] == [
+        {
+            "segment_id": "seg-1",
+            "start_idx": 0,
+            "end_idx": len(original),
+            "entity_type": "PHONE_NUMBER",
+            "privacy_class": "DIRECT_IDENTIFIER",
+            "action": "TOKENIZE",
+            "reason": "직접식별자: 가역 토큰화",
+            "applied": "TOKENIZE",
+        }
+    ]
     assert data["anonymization"]["text"] == placeholder
+    assert data["anonymization"]["entity_outcomes"] == [
+        outcome.model_dump() for outcome in context.entity_outcomes
+    ]
     assert data["upstream"]["request_body"] == context.upstream_request_body
     assert data["response"]["text"] == f"연락처: {original}"
 
