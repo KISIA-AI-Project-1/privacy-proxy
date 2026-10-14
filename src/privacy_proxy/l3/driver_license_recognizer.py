@@ -14,6 +14,14 @@ _COMPACT_LICENSE_CONTEXT = (
     "면허번호",
 )
 
+_COMPACT_COMPETING_CONTEXT = (
+    "송장번호",
+    "운송장번호",
+    "택배번호",
+    "주문번호",
+    "고객번호",
+)
+
 _COMPACT_CONTEXT_WINDOW = 24
 _COMPACT_CONTEXT_MAX_GAP = 6
 
@@ -27,28 +35,42 @@ def _is_local_context_gap(gap: str) -> bool:
     )
 
 
-def _has_compact_license_context(
+def _nearest_compact_context_distance(
     text: str,
     start: int,
     end: int,
-) -> bool:
-    """Check explicit local driver's-license context."""
+    anchors: tuple[str, ...],
+) -> int | None:
+    """Return the nearest directly associated local anchor distance."""
     left = text[max(0, start - _COMPACT_CONTEXT_WINDOW) : start]
-
     right = text[end : end + _COMPACT_CONTEXT_WINDOW]
 
-    for anchor in _COMPACT_LICENSE_CONTEXT:
+    nearest: int | None = None
+
+    for anchor in anchors:
         left_pos = left.rfind(anchor)
 
-        if left_pos != -1 and _is_local_context_gap(left[left_pos + len(anchor) :]):
-            return True
+        if left_pos != -1:
+            gap = left[left_pos + len(anchor) :]
+
+            if _is_local_context_gap(gap):
+                distance = len(gap)
+
+                if nearest is None or distance < nearest:
+                    nearest = distance
 
         right_pos = right.find(anchor)
 
-        if right_pos != -1 and _is_local_context_gap(right[:right_pos]):
-            return True
+        if right_pos != -1:
+            gap = right[:right_pos]
 
-    return False
+            if _is_local_context_gap(gap):
+                distance = len(gap)
+
+                if nearest is None or distance < nearest:
+                    nearest = distance
+
+    return nearest
 
 
 class KrDriverLicenseRecognizer(PresidioKrDriverLicenseRecognizer):
@@ -95,7 +117,7 @@ class KrDriverLicenseRecognizer(PresidioKrDriverLicenseRecognizer):
         nlp_artifacts: NlpArtifacts | None = None,
         regex_flags: int | None = None,
     ) -> list[RecognizerResult]:
-        """Gate separator-free licenses on explicit context."""
+        """Reject compact licenses only when a closer competing anchor owns the value."""
         results = super().analyze(
             text=text,
             entities=entities,
@@ -110,12 +132,25 @@ class KrDriverLicenseRecognizer(PresidioKrDriverLicenseRecognizer):
 
             is_compact = len(original) == 12 and original.isdigit()
 
-            if is_compact and not _has_compact_license_context(
-                text,
-                result.start,
-                result.end,
-            ):
-                continue
+            if is_compact:
+                license_distance = _nearest_compact_context_distance(
+                    text,
+                    result.start,
+                    result.end,
+                    _COMPACT_LICENSE_CONTEXT,
+                )
+
+                competing_distance = _nearest_compact_context_distance(
+                    text,
+                    result.start,
+                    result.end,
+                    _COMPACT_COMPETING_CONTEXT,
+                )
+
+                if competing_distance is not None and (
+                    license_distance is None or competing_distance < license_distance
+                ):
+                    continue
 
             filtered.append(result)
 
