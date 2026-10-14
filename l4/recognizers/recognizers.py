@@ -321,7 +321,13 @@ def find_address_lot(text: str, segment_id: str = "seg-1") -> list[DetectedPII]:
     형식 등)는 후보가 안 생긴다.
     """
     return [
-        _emit_fixed("ADDRESS_LOT", "L4_RECOGNIZER_ADDRESS_LOT", 0.7, match, segment_id)
+        _emit_fixed(
+            "ADDRESS_LOT",
+            "L4_RECOGNIZER_ADDRESS_LOT",
+            0.45 if match["dong"] else 0.7,
+            match,
+            segment_id,
+        )
         for match in ADDRESS_LOT_PATTERN.finditer(text)
     ]
 

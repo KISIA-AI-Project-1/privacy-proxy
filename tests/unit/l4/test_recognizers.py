@@ -372,6 +372,39 @@ def test_지번_산_매치() -> None:
     assert results[0].original_value == "산 15-1"
 
 
+@pytest.mark.parametrize(
+    ("text", "value"),
+    [
+        ("역삼동 123-45에 삽니다", "역삼동 123-45"),
+        ("우동 1492 근처예요", "우동 1492"),
+        ("반포동 777", "반포동 777"),
+        ("행신리 12-3으로 보내주세요", "행신리 12-3"),
+        ("역삼동 123-4번지입니다", "역삼동 123-4번지"),
+    ],
+)
+def test_지번_동리_숫자_매치(text: str, value: str) -> None:
+    results = find_address_lot(text)
+
+    assert [r.original_value for r in results] == [value]
+    assert results[0].confidence == 0.45
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "동 3개 주문",
+        "101동 202호",
+        "고객관리 3건 접수",
+        "이동 5분 걸려요",
+        "자동 3개",
+        "이동 3번 했어요",
+        "ORDER 2026-1234",
+    ],
+)
+def test_지번_동리_숫자_오탐_안_함(text: str) -> None:
+    assert find_address_lot(text) == []
+
+
 def test_번지_없으면_주문번호_형식이_지번으로_안_잡힌다() -> None:
     assert find_address_lot("20260830-1234가 제 주문번호예요") == []
 
