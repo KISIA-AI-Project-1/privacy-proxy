@@ -96,7 +96,10 @@ POLICY_SPECS: dict[str, dict[str, EntitySpec]] = {
     "ADDRESS_LOT": {"*": _gen("address_fragment"), "TOKENIZE": _tok("ADDR_LOT")},
     "ADDRESS_DETAIL": {"*": _gen("address_fragment"), "TOKENIZE": _tok("ADDR_DETAIL")},
     "LOCATION": {"TOKENIZE": _tok("LOCATION"), "GENERALIZE": _gen("location")},
-    "LOCATION_INFORMAL": {"TOKENIZE": _tok("LOCATION"), "GENERALIZE": _tok("LOCATION")},
+    # GENERALIZE 는 LOCATION 과 같은 비가역 일반화. L3 LOCATION 과 L4 NER 가 같은 구간을
+    # 중복 탐지해도 어느 쪽이 남든 결과가 같아야 한다.
+    # (예전에는 가역 토큰이라 L5 GENERALIZE 인데 【LOCATION_1】 로 나가고 L8 이 복원했다)
+    "LOCATION_INFORMAL": {"TOKENIZE": _tok("LOCATION"), "GENERALIZE": _gen("location")},
     "AGE": {"TOKENIZE": _tok("AGE"), "GENERALIZE": _gen("age")},
     "AGE_GROUP": {"TOKENIZE": _tok("AGE_GROUP")},  # 이미 대략적 값이라 GENERALIZE 는 통과
     # 상품: 의미 보존형 일반화는 분류 체계(taxonomy)가 필요하다.
