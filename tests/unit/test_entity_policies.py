@@ -55,7 +55,8 @@ def test_pattern_kept_regardless_of_request_policy(
 def test_retention_notice_only_when_pattern_detected() -> None:
     context = assess_risk(context_for([("PRODUCT_ITEM", "머그컵")]))
     assert PURCHASE_PATTERN_RETENTION_REASON not in context.risk_reasons
-    assert context.entity_policies[0].action == "ALLOW"
+    assert context.entity_policies[0].action == "GENERALIZE"
+    assert context.entity_policies[0].reason == "상품명으로 민감 정보 추론 가능: 보호"
 
 
 @pytest.mark.parametrize("kind", ["ADDRESS", "ORDER_ID", "SENSITIVE_HEALTH", "PHONE_NUMBER"])

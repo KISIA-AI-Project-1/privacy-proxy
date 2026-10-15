@@ -50,6 +50,9 @@ def _entity_policies(
         if entity.entity_type == "PURCHASE_PATTERN":
             action = "ALLOW"
             reason = "업무상 유지 정보(점수 반영)"
+        elif entity.entity_type == "PRODUCT_ITEM":
+            action = "GENERALIZE"
+            reason = "상품명으로 민감 정보 추론 가능: 보호"
         elif kind in _PROTECTED_REASON:
             action = "TOKENIZE"
             reason = _PROTECTED_REASON[kind]
