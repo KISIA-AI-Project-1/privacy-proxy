@@ -193,6 +193,45 @@ class TestAddressAndGeneralize:
         assert result.anonymized_prompt == "저는 30대입니다"
 
 
+# ---------------------------------------------------------------- LOCATION_INFORMAL 일반화
+class TestLocationInformal:
+    def test_generalize_is_irreversible(self, tok: Tokenizer) -> None:
+        prompt = "신림동에 살아요"
+        det = make_det(prompt, "신림동", "LOCATION_INFORMAL")
+        result = tok.anonymize(
+            session_id=SID, raw_prompt=prompt, detected_entities=[det], policy_action="GENERALIZE"
+        )
+        assert result.anonymized_prompt == "【LOCATION】에 살아요"
+        assert result.vault_mapping == {}
+        assert result.entity_actions[0].action is EntityActionKind.GENERALIZE
+
+    def test_tokenize_still_reversible(self, tok: Tokenizer) -> None:
+        prompt = "신림동에 살아요"
+        det = make_det(prompt, "신림동", "LOCATION_INFORMAL")
+        result = tok.anonymize(
+            session_id=SID, raw_prompt=prompt, detected_entities=[det], policy_action="TOKENIZE"
+        )
+        assert result.anonymized_prompt == "【LOCATION_1】에 살아요"
+        assert tok.reveal(SID, "【LOCATION_1】") == "신림동"
+
+    def test_same_result_as_location(self, tok: Tokenizer) -> None:
+        # 중복 탐지로 어느 타입이 남아도 결과가 같아야 한다.
+        prompt = "신림동에 살아요"
+        a = tok.anonymize(
+            session_id=SID,
+            raw_prompt=prompt,
+            detected_entities=[make_det(prompt, "신림동", "LOCATION")],
+            policy_action="GENERALIZE",
+        )
+        b = tok.anonymize(
+            session_id=SID,
+            raw_prompt=prompt,
+            detected_entities=[make_det(prompt, "신림동", "LOCATION_INFORMAL")],
+            policy_action="GENERALIZE",
+        )
+        assert a.anonymized_prompt == b.anonymized_prompt == "【LOCATION】에 살아요"
+
+
 # ---------------------------------------------------------------- 시나리오 A (B2B)
 class TestScenarioA:
     PROMPT = (
@@ -254,6 +293,97 @@ class TestScenarioA:
         for action in result.entity_actions:
             assert 0 <= action.start_idx < action.end_idx <= len(self.PROMPT)
             assert not hasattr(action, "original_value")
+
+
+# ---------------------------------------------------------------- 항목별 정책(entity_policies)
+class TestEntityPolicies:
+    def test_purchase_pattern_kept_even_if_entity_policy_says_tokenize(
+        self, tok: Tokenizer
+    ) -> None:
+        prompt = "3개월 주기 정기배송 변경"
+        det = make_det(prompt, "정기배송", "PURCHASE_PATTERN")
+        for action in ("TOKENIZE", "GENERALIZE", "ALLOW"):
+            result = tok.anonymize(
+                session_id=SID,
+                raw_prompt=prompt,
+                detected_entities=[det],
+                policy_action="TOKENIZE",
+                entity_policies={("seg-1", det.start_idx, det.end_idx): action},
+            )
+            assert result.anonymized_prompt == prompt
+            assert result.entity_actions[0].action is EntityActionKind.KEEP
+
+    def test_entity_policy_overrides_request_policy(self, tok: Tokenizer) -> None:
+        prompt = "30대이고 연락처는 010-1234-5678 입니다"
+        age = make_det(prompt, "30대", "AGE_GROUP")
+        phone = make_det(prompt, "010-1234-5678", "PHONE_NUMBER")
+        result = tok.anonymize(
+            session_id=SID,
+            raw_prompt=prompt,
+            detected_entities=[age, phone],
+            policy_action="TOKENIZE",  # 요청 단위로는 AGE_GROUP 도 가려질 상황
+            entity_policies={
+                ("seg-1", age.start_idx, age.end_idx): "ALLOW",
+                ("seg-1", phone.start_idx, phone.end_idx): "TOKENIZE",
+            },
+        )
+        assert result.anonymized_prompt == "30대이고 연락처는 【PHONE_1】 입니다"
+
+    def test_missing_key_falls_back_to_request_policy(self, tok: Tokenizer) -> None:
+        prompt = "30대입니다"
+        age = make_det(prompt, "30대", "AGE_GROUP")
+        result = tok.anonymize(
+            session_id=SID,
+            raw_prompt=prompt,
+            detected_entities=[age],
+            policy_action="TOKENIZE",
+            entity_policies={},  # 키 없음
+        )
+        assert result.anonymized_prompt == "【AGE_GROUP_1】입니다"
+
+    def test_direct_identifier_ignores_entity_policy(self, tok: Tokenizer) -> None:
+        prompt = "번호 010-1234-5678"
+        phone = make_det(prompt, "010-1234-5678", "PHONE_NUMBER")
+        result = tok.anonymize(
+            session_id=SID,
+            raw_prompt=prompt,
+            detected_entities=[phone],
+            entity_policies={("seg-1", phone.start_idx, phone.end_idx): "ALLOW"},
+        )
+        assert result.anonymized_prompt == "번호 【PHONE_1】"
+
+    def test_address_masked_even_if_l5_allow(self, tok: Tokenizer) -> None:
+        # L5 는 ALLOW 라고 해도 L6 실제 처리는 마스킹. 화면은 이 결과를 보여야 한다.
+        prompt = "주소는 월드컵북로4길 77 입니다"
+        det = make_det(prompt, "월드컵북로4길 77", "ADDRESS_ROAD")
+        result = tok.anonymize(
+            session_id=SID,
+            raw_prompt=prompt,
+            detected_entities=[det],
+            policy_action="ALLOW",
+            entity_policies={("seg-1", det.start_idx, det.end_idx): "ALLOW"},
+        )
+        assert result.anonymized_prompt == "주소는 【ADDRESS】 입니다"
+        assert result.entity_actions[0].action is EntityActionKind.GENERALIZE
+
+    def test_entity_action_has_segment_id_for_join(self, tok: Tokenizer) -> None:
+        prompt = "번호 010-1234-5678"
+        phone = make_det(prompt, "010-1234-5678", "PHONE_NUMBER")
+        result = tok.anonymize(session_id=SID, raw_prompt=prompt, detected_entities=[phone])
+        a = result.entity_actions[0]
+        assert (a.segment_id, a.start_idx, a.end_idx) == ("seg-1", phone.start_idx, phone.end_idx)
+
+    def test_product_item_generalize_is_tokenized(self, tok: Tokenizer) -> None:
+        # (나)안: L5 가 PRODUCT_ITEM 에 GENERALIZE 를 내면 L6 는 【PRODUCT_n】 으로 가린다.
+        prompt = "프로페시아 샀어요"
+        det = make_det(prompt, "프로페시아", "PRODUCT_ITEM")
+        result = tok.anonymize(
+            session_id=SID,
+            raw_prompt=prompt,
+            detected_entities=[det],
+            entity_policies={("seg-1", det.start_idx, det.end_idx): "GENERALIZE"},
+        )
+        assert result.anonymized_prompt == "【PRODUCT_1】 샀어요"
 
 
 # ---------------------------------------------------------------- 일관성 / 세션
@@ -455,94 +585,3 @@ class TestStore:
     def test_invalid_session_id_rejected(self, store: InMemoryVaultStore, bad: str) -> None:
         with pytest.raises(ValueError):
             store.pseudonym_exists(bad, "x")
-
-
-# ---------------------------------------------------------------- 항목별 정책(entity_policies)
-class TestEntityPolicies:
-    def test_purchase_pattern_kept_even_if_entity_policy_says_tokenize(
-        self, tok: Tokenizer
-    ) -> None:
-        prompt = "3개월 주기 정기배송 변경"
-        det = make_det(prompt, "정기배송", "PURCHASE_PATTERN")
-        for action in ("TOKENIZE", "GENERALIZE", "ALLOW"):
-            result = tok.anonymize(
-                session_id=SID,
-                raw_prompt=prompt,
-                detected_entities=[det],
-                policy_action="TOKENIZE",
-                entity_policies={("seg-1", det.start_idx, det.end_idx): action},
-            )
-            assert result.anonymized_prompt == prompt
-            assert result.entity_actions[0].action is EntityActionKind.KEEP
-
-    def test_entity_policy_overrides_request_policy(self, tok: Tokenizer) -> None:
-        prompt = "30대이고 연락처는 010-1234-5678 입니다"
-        age = make_det(prompt, "30대", "AGE_GROUP")
-        phone = make_det(prompt, "010-1234-5678", "PHONE_NUMBER")
-        result = tok.anonymize(
-            session_id=SID,
-            raw_prompt=prompt,
-            detected_entities=[age, phone],
-            policy_action="TOKENIZE",  # 요청 단위로는 AGE_GROUP 도 가려질 상황
-            entity_policies={
-                ("seg-1", age.start_idx, age.end_idx): "ALLOW",
-                ("seg-1", phone.start_idx, phone.end_idx): "TOKENIZE",
-            },
-        )
-        assert result.anonymized_prompt == "30대이고 연락처는 【PHONE_1】 입니다"
-
-    def test_missing_key_falls_back_to_request_policy(self, tok: Tokenizer) -> None:
-        prompt = "30대입니다"
-        age = make_det(prompt, "30대", "AGE_GROUP")
-        result = tok.anonymize(
-            session_id=SID,
-            raw_prompt=prompt,
-            detected_entities=[age],
-            policy_action="TOKENIZE",
-            entity_policies={},  # 키 없음
-        )
-        assert result.anonymized_prompt == "【AGE_GROUP_1】입니다"
-
-    def test_direct_identifier_ignores_entity_policy(self, tok: Tokenizer) -> None:
-        prompt = "번호 010-1234-5678"
-        phone = make_det(prompt, "010-1234-5678", "PHONE_NUMBER")
-        result = tok.anonymize(
-            session_id=SID,
-            raw_prompt=prompt,
-            detected_entities=[phone],
-            entity_policies={("seg-1", phone.start_idx, phone.end_idx): "ALLOW"},
-        )
-        assert result.anonymized_prompt == "번호 【PHONE_1】"
-
-    def test_address_masked_even_if_l5_allow(self, tok: Tokenizer) -> None:
-        # L5 는 ALLOW 라고 해도 L6 실제 처리는 마스킹. 화면은 이 결과를 보여야 한다.
-        prompt = "주소는 월드컵북로4길 77 입니다"
-        det = make_det(prompt, "월드컵북로4길 77", "ADDRESS_ROAD")
-        result = tok.anonymize(
-            session_id=SID,
-            raw_prompt=prompt,
-            detected_entities=[det],
-            policy_action="ALLOW",
-            entity_policies={("seg-1", det.start_idx, det.end_idx): "ALLOW"},
-        )
-        assert result.anonymized_prompt == "주소는 【ADDRESS】 입니다"
-        assert result.entity_actions[0].action is EntityActionKind.GENERALIZE
-
-    def test_entity_action_has_segment_id_for_join(self, tok: Tokenizer) -> None:
-        prompt = "번호 010-1234-5678"
-        phone = make_det(prompt, "010-1234-5678", "PHONE_NUMBER")
-        result = tok.anonymize(session_id=SID, raw_prompt=prompt, detected_entities=[phone])
-        a = result.entity_actions[0]
-        assert (a.segment_id, a.start_idx, a.end_idx) == ("seg-1", phone.start_idx, phone.end_idx)
-
-    def test_product_item_generalize_is_tokenized(self, tok: Tokenizer) -> None:
-        # (나)안: L5 가 PRODUCT_ITEM 에 GENERALIZE 를 내면 L6 는 【PRODUCT_n】 으로 가린다.
-        prompt = "프로페시아 샀어요"
-        det = make_det(prompt, "프로페시아", "PRODUCT_ITEM")
-        result = tok.anonymize(
-            session_id=SID,
-            raw_prompt=prompt,
-            detected_entities=[det],
-            entity_policies={("seg-1", det.start_idx, det.end_idx): "GENERALIZE"},
-        )
-        assert result.anonymized_prompt == "【PRODUCT_1】 샀어요"
