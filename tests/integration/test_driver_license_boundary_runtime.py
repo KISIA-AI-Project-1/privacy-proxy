@@ -2,7 +2,7 @@
 
 import unittest
 
-from l4.recognizers import find_customs_clearance_id
+from l4.recognizers import find_customs_clearance_id, find_tracking_number
 
 from privacy_proxy.l3.service import L3AnalyzerService
 from privacy_proxy.schemas import DetectionTier
@@ -169,5 +169,301 @@ class DriverLicenseBoundaryRuntimeTests(unittest.TestCase):
                 )
 
 
+class DriverLicenseCompactContextRuntimeTests(unittest.TestCase):
+    """Compact license ambiguity regression contract."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.service = L3AnalyzerService()
+
+    def detect(self, raw_prompt: str):
+        return self.service.analyze(
+            raw_prompt,
+            "driver-license-compact-context",
+            entities=["KR_DRIVER_LICENSE"],
+        )
+
+    def test_bare_compact_preserves_baseline_driver_candidate(self):
+        value = "112412345601"
+
+        detections = self.detect(value)
+
+        self.assertEqual(
+            len(detections),
+            1,
+        )
+
+        self.assertEqual(
+            detections[0].original_value,
+            value,
+        )
+
+        self.assertIs(
+            detections[0].tier,
+            DetectionTier.DETERMINISTIC,
+        )
+
+        self.assertIsNone(
+            detections[0].confidence,
+        )
+
+    def test_explicit_license_context_preserves_compact_driver(
+        self,
+    ):
+        value = "112412345601"
+
+        cases = (
+            f"면허번호 {value}",
+            f"운전면허번호 {value}",
+            f"{value} 운전면허번호입니다",
+        )
+
+        for raw_prompt in cases:
+            with self.subTest(
+                raw_prompt=raw_prompt,
+            ):
+                detections = self.detect(raw_prompt)
+
+                self.assertEqual(
+                    len(detections),
+                    1,
+                )
+
+                detection = detections[0]
+
+                self.assertEqual(
+                    detection.entity_type,
+                    "KR_DRIVER_LICENSE",
+                )
+
+                self.assertEqual(
+                    detection.original_value,
+                    value,
+                )
+
+                self.assertEqual(
+                    raw_prompt[detection.start_idx : detection.end_idx],
+                    value,
+                )
+
+                self.assertIs(
+                    detection.tier,
+                    DetectionTier.DETERMINISTIC,
+                )
+
+                self.assertIsNone(detection.confidence)
+
+    def test_direct_competing_identifier_contexts_do_not_emit_driver(
+        self,
+    ):
+        value = "112412345601"
+
+        cases = (
+            f"송장번호 {value}",
+            f"운송장번호 {value}",
+            f"택배번호 {value}",
+            f"주문번호 {value}",
+            f"고객번호 {value}",
+        )
+
+        for raw_prompt in cases:
+            with self.subTest(
+                raw_prompt=raw_prompt,
+            ):
+                self.assertEqual(
+                    self.detect(raw_prompt),
+                    [],
+                )
+
+    def test_neutral_compact_contexts_preserve_baseline(
+        self,
+    ):
+        value = "112412345601"
+
+        cases = (
+            value,
+            f"식별값 {value}",
+            f"참조값: {value}",
+            f"송장 관련 문의입니다. 식별값 {value}",
+            f"주문 관련 문의입니다. 참조값: {value}",
+            f"({value})",
+        )
+
+        for raw_prompt in cases:
+            with self.subTest(
+                raw_prompt=raw_prompt,
+            ):
+                detections = self.detect(raw_prompt)
+
+                self.assertEqual(
+                    len(detections),
+                    1,
+                )
+
+                self.assertEqual(
+                    detections[0].original_value,
+                    value,
+                )
+
+    def test_ascii_prefixed_compact_is_not_driver(
+        self,
+    ):
+        value = "112412345601"
+
+        self.assertEqual(
+            self.detect(f"P{value}"),
+            [],
+        )
+
+    def test_space_separated_license_is_preserved(
+        self,
+    ):
+        value = "11 24 123456 01"
+
+        detections = self.detect(value)
+
+        self.assertEqual(
+            len(detections),
+            1,
+        )
+
+        self.assertEqual(
+            detections[0].original_value,
+            value,
+        )
+
+        self.assertIs(
+            detections[0].tier,
+            DetectionTier.DETERMINISTIC,
+        )
+
+    def test_tracking_context_remains_l4_owned(
+        self,
+    ):
+        raw_prompt = "송장번호 112412345601"
+
+        self.assertEqual(
+            self.detect(raw_prompt),
+            [],
+        )
+
+        tracking = find_tracking_number(
+            raw_prompt,
+            segment_id=("driver-license-compact-context"),
+        )
+
+        self.assertEqual(
+            len(tracking),
+            1,
+        )
+
+        self.assertEqual(
+            tracking[0].entity_type,
+            "TRACKING_NUMBER",
+        )
+
+        self.assertEqual(
+            tracking[0].original_value,
+            "112412345601",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
+
+# DL-TRACK-07B reviewer direct-anchor regressions
+
+_DL_TRACK_REVIEW_COMPACT = "112412345601"
+
+
+def _dl_track_review_driver_values(text: str) -> list[str]:
+    from privacy_proxy.l3.service import L3AnalyzerService
+
+    results = L3AnalyzerService().analyze(
+        text,
+        "dl-track-review-regression",
+        entities=["KR_DRIVER_LICENSE"],
+    )
+
+    values: list[str] = []
+
+    for result in results:
+        entity_type = getattr(result, "entity_type", None)
+
+        if hasattr(entity_type, "value"):
+            entity_type = entity_type.value
+
+        if str(entity_type) != "KR_DRIVER_LICENSE":
+            continue
+
+        original_value = getattr(
+            result,
+            "original_value",
+            None,
+        )
+
+        if original_value is not None:
+            values.append(str(original_value))
+
+    return values
+
+
+def test_review_direct_competing_anchors_suppress_compact_driver() -> None:
+    cases = (
+        "송장번호: 112412345601",
+        "송장번호 112412345601",
+        "운송장번호\uff1a112412345601",
+        "주문번호: 112412345601",
+        "고객번호: 112412345601",
+    )
+
+    for text in cases:
+        values = _dl_track_review_driver_values(text)
+
+        assert _DL_TRACK_REVIEW_COMPACT not in values, text
+
+
+def test_review_nearby_competing_wording_preserves_direct_driver_anchor() -> None:
+    cases = (
+        "송장 관련 문의입니다. 운전면허번호 112412345601",
+        "주문번호는 별도로 확인했습니다. 면허번호: 112412345601",
+        "고객번호를 확인한 뒤 운전면허번호\uff1a112412345601",
+    )
+
+    for text in cases:
+        values = _dl_track_review_driver_values(text)
+
+        assert _DL_TRACK_REVIEW_COMPACT in values, text
+
+
+def test_review_direct_relation_wins_when_both_anchor_types_exist() -> None:
+    driver_direct = "송장번호는 별도이며 운전면허번호: 112412345601"
+
+    competing_direct = "운전면허번호는 별도로 제출했고 송장번호: 112412345601"
+
+    assert _DL_TRACK_REVIEW_COMPACT in _dl_track_review_driver_values(driver_direct)
+
+    assert _DL_TRACK_REVIEW_COMPACT not in _dl_track_review_driver_values(competing_direct)
+
+
+def test_review_structured_driver_survives_nearby_competing_wording() -> None:
+    hyphenated = "송장 관련 문의 후 운전면허번호는 12-34-567890-12입니다."
+
+    spaced = "주문 관련 문의입니다. 면허번호는 12 34 567890 12입니다."
+
+    assert "12-34-567890-12" in _dl_track_review_driver_values(hyphenated)
+
+    assert "12 34 567890 12" in _dl_track_review_driver_values(spaced)
+
+
+def test_review_tracking_collision_remains_l4_tracking_number() -> None:
+    from l4.recognizers import find_tracking_number
+
+    text = "송장번호: 112412345601"
+
+    driver_values = _dl_track_review_driver_values(text)
+
+    tracking_results = find_tracking_number(text)
+
+    assert _DL_TRACK_REVIEW_COMPACT not in driver_values
+    assert len(tracking_results) >= 1
