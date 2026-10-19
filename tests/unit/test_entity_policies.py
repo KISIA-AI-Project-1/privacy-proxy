@@ -56,7 +56,29 @@ def test_retention_notice_only_when_pattern_detected() -> None:
     context = assess_risk(context_for([("PRODUCT_ITEM", "머그컵")]))
     assert PURCHASE_PATTERN_RETENTION_REASON not in context.risk_reasons
     assert context.entity_policies[0].action == "GENERALIZE"
-    assert context.entity_policies[0].reason == "상품명으로 민감 정보 추론 가능: 보호"
+    assert (
+        context.entity_policies[0].reason == "상품명 보호: '상품'으로 비가역 일반화 요청(복원 제외)"
+    )
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [[], [("AGE", "30세"), ("LOCATION", "신림동")], [("PHONE_NUMBER", "010-1234-5678")]],
+)
+def test_product_generalization_is_a_request_without_changing_raw_text(
+    extra: list[tuple[str, str]],
+) -> None:
+    context = context_for([("PRODUCT_ITEM", "가상테스트기"), *extra])
+    original = context.raw_prompt
+    assess_risk(context)
+    product = next(p for p in context.entity_policies if p.entity_type == "PRODUCT_ITEM")
+    assert product.action == "GENERALIZE"
+    assert "비가역 일반화 요청" in product.reason
+    assert "복원 제외" in product.reason
+    assert "가상테스트기" not in product.reason
+    assert context.raw_prompt == original
+    assert context.anonymized_prompt is None
+    assert context.vault_mapping == {}
 
 
 @pytest.mark.parametrize("kind", ["ADDRESS", "ORDER_ID", "SENSITIVE_HEALTH", "PHONE_NUMBER"])
