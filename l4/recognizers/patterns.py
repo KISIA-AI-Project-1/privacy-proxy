@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 # 경계는 \b 대신 ASCII 영숫자 기준 lookaround로 잡는다. Python re는 한글도
 # \w로 쳐서, "P220194827163으로"처럼 조사가 붙으면 \b가 숫자-한글 경계에서
@@ -103,10 +104,14 @@ ADDRESS_ROAD_PATTERN: re.Pattern[str] = re.compile(
 # 안 걸린다(ORDER_ID 등과 형식 충돌 없음). confidence 고정 0.7.
 #
 # named group `dong` 갈래는 "OO동/리 + 숫자(-숫자)"로, 번지 없이 쓰인 지번용이다.
-# 뒤에 단위("개/건/명" 등)가 오면 제외해 "이동 5분"·"관리 3건"류를 거른다.
-# 오탐 위험이 커서 confidence를 낮춘다. 행정동 "가"(종로3가)는 조사 "가"와
-# 구분이 안 돼 다루지 않는다. 한 글자 + 동은 실재하는 두 글자 동만 허용하고 한 글자 + 리는
-# 다루지 않는다.
+# 후보는 한글 연속 구간의 시작에서만 잡고(_KL), `name`이 법정동 사전에 있을 때만
+# 지번으로 본다(recognizers.find_address_lot). 뒤에 단위("개/건/명" 등)가 오면
+# 제외한다. 오탐 위험이 있어 confidence를 낮춘다. 행정동 "가"(종로3가)는 조사
+# "가"와 구분이 안 돼 다루지 않는다.
+LEGAL_DONG: frozenset[str] = frozenset(
+    Path(__file__).with_name("legal_dong.txt").read_text(encoding="utf-8").split()
+)
+_DONG_MAX = max(map(len, LEGAL_DONG))
 ADDRESS_LOT_PATTERN: re.Pattern[str] = re.compile(
     _L
     + r"\d{1,4}(?:-\d{1,4})?\s?번지"
@@ -117,7 +122,9 @@ ADDRESS_LOT_PATTERN: re.Pattern[str] = re.compile(
     + _R
     + r"|"
     + _KL
-    + r"(?P<dong>(?:[가-힣]{2,6}[동리]|[동북서세신우좌주중포현]동)\s?\d{1,4}(?:-\d{1,4})?(?:\s?번지)?)"
+    + r"(?P<dong>(?P<name>[가-힣]{1,"
+    + str(_DONG_MAX - 1)
+    + r"}[동리])\s?\d{1,4}(?:-\d{1,4})?(?:\s?번지)?)"
     + _R
     + r"(?!개|건|명|회|원|가지|월|년|일|분|시|번|%)"
 )
