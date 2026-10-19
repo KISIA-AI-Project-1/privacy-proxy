@@ -148,7 +148,9 @@ class TestBasicTokenization:
         protected = tok.anonymize(
             session_id=SID, raw_prompt=prompt, detected_entities=[det], policy_action="TOKENIZE"
         )
-        assert protected.anonymized_prompt == "【PRODUCT_1】 샀어요"
+        assert protected.anonymized_prompt == "상품 샀어요"
+        assert protected.vault_mapping == {}
+        assert protected.entity_actions[0].action is EntityActionKind.GENERALIZE
 
 
 # ---------------------------------------------------------------- 주소 / 일반화
@@ -267,7 +269,7 @@ class TestScenarioA:
         assert "배송지 변경" in out
         # 토큰 확인
         assert "【PHONE_1】" in out
-        assert "【PRODUCT_1】" in out
+        assert "상품" in out
         assert "【ADDR_ROAD_1】" in out
 
         # 복원
@@ -285,7 +287,7 @@ class TestScenarioA:
         assert by_type == {
             "PERSON_KO": EntityActionKind.TOKENIZE,
             "PURCHASE_PATTERN": EntityActionKind.KEEP,
-            "PRODUCT_ITEM": EntityActionKind.TOKENIZE,
+            "PRODUCT_ITEM": EntityActionKind.GENERALIZE,
             "PHONE_NUMBER": EntityActionKind.TOKENIZE,
             "ADDRESS_ROAD": EntityActionKind.TOKENIZE,
         }
@@ -373,8 +375,8 @@ class TestEntityPolicies:
         a = result.entity_actions[0]
         assert (a.segment_id, a.start_idx, a.end_idx) == ("seg-1", phone.start_idx, phone.end_idx)
 
-    def test_product_item_generalize_is_tokenized(self, tok: Tokenizer) -> None:
-        # (나)안: L5 가 PRODUCT_ITEM 에 GENERALIZE 를 내면 L6 는 【PRODUCT_n】 으로 가린다.
+    def test_product_item_generalize_is_irreversible(self, tok: Tokenizer) -> None:
+        # PRODUCT_ITEM 은 GENERALIZE 시 구체적인 상품명을 "상품"으로 일반화한다.
         prompt = "프로페시아 샀어요"
         det = make_det(prompt, "프로페시아", "PRODUCT_ITEM")
         result = tok.anonymize(
@@ -383,7 +385,9 @@ class TestEntityPolicies:
             detected_entities=[det],
             entity_policies={("seg-1", det.start_idx, det.end_idx): "GENERALIZE"},
         )
-        assert result.anonymized_prompt == "【PRODUCT_1】 샀어요"
+        assert result.anonymized_prompt == "상품 샀어요"
+        assert result.vault_mapping == {}
+        assert result.entity_actions[0].action is EntityActionKind.GENERALIZE
 
 
 # ---------------------------------------------------------------- 일관성 / 세션
@@ -585,3 +589,65 @@ class TestStore:
     def test_invalid_session_id_rejected(self, store: InMemoryVaultStore, bad: str) -> None:
         with pytest.raises(ValueError):
             store.pseudonym_exists(bad, "x")
+
+
+# ---------------------------------------------------------------- 조사 보정(전체 치환)
+class TestJosaCorrection:
+    @pytest.mark.parametrize(
+        ("suffix", "expected"),
+        [
+            ("가 문의했어요", "홍길동이 문의했어요"),  # 철수(받침 없음) -> 길동(받침 있음)
+            ("는 환불을 원해요", "홍길동은 환불을 원해요"),
+            ("를 찾아요", "홍길동을 찾아요"),
+            ("와 통화", "홍길동과 통화"),
+            ("로 보내주세요", "홍길동으로 보내주세요"),
+        ],
+    )
+    def test_person_pseudonym(self, tok: Tokenizer, suffix: str, expected: str) -> None:
+        prompt = "김철수" + suffix
+        det = make_det(prompt, "김철수", "PERSON_KO")
+        result = tok.anonymize(session_id=SID, raw_prompt=prompt, detected_entities=[det])
+        assert result.anonymized_prompt == expected
+        assert result.vault_mapping == {"홍길동": "김철수"}  # 키에 조사 없음
+
+    @pytest.mark.parametrize(
+        ("value", "suffix", "expected"),
+        [
+            ("서울 마포구 신림동", "은 좋아요", "서울은 좋아요"),  # 동(받침) -> 서울(받침)
+            ("서울 마포구 신림동", "으로 이사", "서울로 이사"),  # ㄹ 받침은 '로'
+            ("부산광역시 해운대구 우동", "을 좋아해요", "부산광역시를 좋아해요"),  # 받침 없음
+        ],
+    )
+    def test_generalized_location(
+        self, tok: Tokenizer, value: str, suffix: str, expected: str
+    ) -> None:
+        prompt = value + suffix
+        det = make_det(prompt, value, "LOCATION")
+        result = tok.anonymize(
+            session_id=SID, raw_prompt=prompt, detected_entities=[det], policy_action="GENERALIZE"
+        )
+        assert result.anonymized_prompt == expected
+
+    def test_bracket_token_keeps_original_josa(self, tok: Tokenizer) -> None:
+        prompt = "010-1234-5678로 연락, 010-1234-5678은 제 번호"
+        dets = [
+            make_det(prompt, "010-1234-5678", "PHONE_NUMBER", nth=0),
+            make_det(prompt, "010-1234-5678", "PHONE_NUMBER", nth=1),
+        ]
+        result = tok.anonymize(session_id=SID, raw_prompt=prompt, detected_entities=dets)
+        assert result.anonymized_prompt == "【PHONE_1】로 연락, 【PHONE_1】은 제 번호"
+
+    def test_not_josa_when_word_continues(self, tok: Tokenizer) -> None:
+        prompt = "김철수가격 김철수이메일"
+        dets = [
+            make_det(prompt, "김철수", "PERSON_KO", nth=0),
+            make_det(prompt, "김철수", "PERSON_KO", nth=1),
+        ]
+        result = tok.anonymize(session_id=SID, raw_prompt=prompt, detected_entities=dets)
+        assert result.anonymized_prompt == "홍길동가격 홍길동이메일"
+
+    def test_josa_not_swallowed_across_next_entity(self, tok: Tokenizer) -> None:
+        prompt = "김철수와 이영희"
+        dets = [make_det(prompt, "김철수", "PERSON_KO"), make_det(prompt, "이영희", "PERSON_KO")]
+        result = tok.anonymize(session_id=SID, raw_prompt=prompt, detected_entities=dets)
+        assert result.anonymized_prompt == "홍길동과 성춘향"

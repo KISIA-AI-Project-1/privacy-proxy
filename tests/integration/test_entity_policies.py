@@ -104,7 +104,7 @@ def test_product_and_purchase_pattern_do_not_fail_l6() -> None:
     # 변경
     assert _actions(context)["PRODUCT_ITEM"] == "GENERALIZE"
     assert _actions(context)["PURCHASE_PATTERN"] == "ALLOW"
-    assert sent == "매달 【PRODUCT_1】 주문하는 계정이에요. 【PHONE_1】로 연락주세요."
+    assert sent == "매달 상품 주문하는 계정이에요. 【PHONE_1】로 연락주세요."
 
 
 def test_without_entity_policies_l6_keeps_old_behavior() -> None:
