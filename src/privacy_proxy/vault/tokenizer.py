@@ -8,11 +8,16 @@
 action 은 항목별 정책(entity_policies)이 있으면 그것을, 없으면 요청 단위 policy_action 을 쓴다.
   - 직접식별자(이름/연락처/각종 ID/고유식별정보/민감정보): action 과 무관하게 항상 가역 치환
   - 주소: 기본 일반화(비가역). action=TOKENIZE 이면 가역 토큰
-  - 준식별자(LOCATION/AGE/AGE_GROUP/LOCATION_INFORMAL/PRODUCT_ITEM):
+  - 준식별자(LOCATION/AGE/AGE_GROUP/LOCATION_INFORMAL):
     L5 가 위험으로 판단해 TOKENIZE/GENERALIZE 를 내린 경우에만 보호, 그 외면 그대로 통과
+  - 상품(PRODUCT_ITEM): TOKENIZE/GENERALIZE 모두 '상품' 으로 비가역 일반화
+    (Vault 저장 안 함 -> L8 복원 제외). ALLOW/None 이면 통과.
   - 항상 통과: PURCHASE_PATTERN(정기배송 여부 등)
     시나리오 A 에서 "업무상 유지할 정보"라서 L6 는 action 과 무관하게 건드리지 않는다.
     L5 위험 점수에는 그대로 반영된다.
+
+조사 보정: 대체어 끝 글자가 한글이면 뒤에 붙은 조사를 받침에 맞게 고친다
+(김철수가 -> 홍길동이, 임신테스트기를 -> 상품을). 한글이 아닌 대체어(【PHONE_1】 등)는 그대로 둔다.
 
 Strategy:
   NATURAL_PSEUDONYM : 이름 -> 자연스러운 가명 (가역)
@@ -102,11 +107,10 @@ POLICY_SPECS: dict[str, dict[str, EntitySpec]] = {
     "LOCATION_INFORMAL": {"TOKENIZE": _tok("LOCATION"), "GENERALIZE": _gen("location")},
     "AGE": {"TOKENIZE": _tok("AGE"), "GENERALIZE": _gen("age")},
     "AGE_GROUP": {"TOKENIZE": _tok("AGE_GROUP")},  # 이미 대략적 값이라 GENERALIZE 는 통과
-    # 상품: 의미 보존형 일반화는 분류 체계(taxonomy)가 필요하다.
-    # taxonomy 가 정해지기 전까지는 L5 가 보호를 요구한 경우(TOKENIZE/GENERALIZE) 모두
-    # 가역 토큰으로 치환한다. L5 가 ALLOW 면 통과.
-    # taxonomy 가 생기면 GENERALIZE 항목만 _gen("product") 등으로 교체하면 된다.
-    "PRODUCT_ITEM": {"TOKENIZE": _tok("PRODUCT"), "GENERALIZE": _tok("PRODUCT")},
+    # 상품명: 공통 표현 '상품' 으로 비가역 일반화(Vault 저장 안 함, L8 복원 제외).
+    # 요청 단위 정책이 TOKENIZE 로 폴백돼도 가역 토큰이 나가지 않게 둘 다 일반화한다.
+    # ALLOW/None 이면 통과. 카테고리 보존(예: '헤어케어 제품')은 taxonomy 가 생기면 추가한다.
+    "PRODUCT_ITEM": {"TOKENIZE": _gen("product"), "GENERALIZE": _gen("product")},
     # 정기배송 여부는 시나리오 A 의 "업무상 유지할 정보". 팀 합의(L6 항상 통과, L5 점수엔 반영).
     # 빈 dict -> resolve_spec 이 None -> passthrough(KEEP). is_known 은 True 라 strict 에서도 예외 없음.
     # 주의: 이 키를 삭제하면 strict 모드에서 UnsupportedEntityError 로 L6 전체가 실패한다.
@@ -182,12 +186,67 @@ def _generalize_age(value: str) -> str:
     return "10세 미만" if n < 10 else f"{n // 10 * 10}대"
 
 
+def _generalize_product(value: str) -> str:
+    """상품명은 공통 표현으로 바꾼다. 카테고리는 남기지 않는다(taxonomy 없음)."""
+    return "상품"
+
+
 GENERALIZERS: dict[str, Callable[[str], str]] = {
     "address": _generalize_address,
     "address_fragment": _generalize_address_fragment,
     "location": _generalize_location,
     "age": _generalize_age,
+    "product": _generalize_product,
 }
+
+
+# ---------------------------------------------------------------------- 조사 보정
+# 대체어 받침에 맞춰 조사를 보정한다. (받침 있을 때, 받침 없을 때)
+_JOSA_PAIRS = (
+    ("이에요", "예요"),
+    ("이라고", "라고"),
+    ("이랑", "랑"),
+    ("이나", "나"),
+    ("으로", "로"),
+    ("은", "는"),
+    ("이", "가"),
+    ("을", "를"),
+    ("과", "와"),
+)
+_JOSA_PAIR_OF = {form: pair for pair in _JOSA_PAIRS for form in pair}
+_JOSA_FORMS = sorted(_JOSA_PAIR_OF, key=len, reverse=True)  # 긴 것부터
+# 뒤에 글자가 이어지면("가격", "이메일", "인데요") 조사가 아니다.
+_JOSA_RE = re.compile(
+    "(" + "|".join(re.escape(form) for form in _JOSA_FORMS) + r")(?![0-9A-Za-z_가-힣])"
+)
+_RIEUL = 8  # 종성 ㄹ 인덱스
+
+
+def _josa_for(replacement: str, josa: str) -> str | None:
+    """대체어 끝 글자 받침에 맞는 조사. 끝 글자가 한글 음절이 아니면 None(보정 안 함)."""
+    code = ord(replacement[-1]) - 0xAC00
+    if not 0 <= code <= 11171:
+        return None
+    jong = code % 28
+    with_batchim, without_batchim = _JOSA_PAIR_OF[josa]
+    if with_batchim == "으로":
+        return "로" if jong in (0, _RIEUL) else "으로"
+    return without_batchim if jong == 0 else with_batchim
+
+
+def _fix_josa(replacement: str, text: str, pos: int, limit: int) -> tuple[str, int]:
+    """text[pos:] 앞에 붙은 조사를 대체어에 맞게 고친다. (고친 조사, 소비한 글자 수).
+
+    다음 탐지 span(limit) 을 침범하지 않는다. 보정할 게 없으면 ("", 0).
+    """
+    match = _JOSA_RE.match(text, pos)
+    if match is None or match.end() > limit:
+        return "", 0
+    fixed = _josa_for(replacement, match.group(1))
+    if fixed is None:
+        return "", 0
+    return fixed, match.end() - pos
+
 
 # 이름 가명 풀: 고전 소설 인물 이름(한국어), 대표 가명(영어).
 # - 실제 고객 이름과 겹칠 가능성이 낮고, LLM 이 가명임을 쉽게 알아챈다.
@@ -445,10 +504,14 @@ class Tokenizer:
         cache: dict[tuple[str, str], str] = {}
         cursor = 0
 
-        for e in self._resolve_overlaps(detected_entities):
+        resolved = self._resolve_overlaps(detected_entities)
+        for index, e in enumerate(resolved):
             start, end, original = e.start_idx, e.end_idx, e.original_value
             entity_type = str(e.entity_type)
             segment_id = getattr(e, "segment_id", "seg-1")
+            next_start = (
+                resolved[index + 1].start_idx if index + 1 < len(resolved) else len(raw_prompt)
+            )
 
             if not (0 <= start < end <= len(raw_prompt)) or raw_prompt[start:end] != original:
                 raise EntityMismatchError(
@@ -475,6 +538,7 @@ class Tokenizer:
                 )
                 continue
 
+            resume = end  # 다음 조각을 이어 붙일 원문 위치
             if spec.strategy is Strategy.GENERALIZE:
                 replacement = GENERALIZERS[spec.generalizer](original)
                 actions.append(
@@ -489,9 +553,15 @@ class Tokenizer:
                     EntityAction(segment_id, start, end, entity_type, EntityActionKind.TOKENIZE)
                 )
 
+            # 매핑 등록 뒤에 붙이므로 vault_mapping 키(가명)에는 조사가 섞이지 않는다.
+            josa, consumed = _fix_josa(replacement, raw_prompt, end, next_start)
+            if consumed:
+                replacement += josa
+                resume = end + consumed
+
             pieces.append(raw_prompt[cursor:start])
             pieces.append(replacement)
-            cursor = end
+            cursor = resume
 
         pieces.append(raw_prompt[cursor:])
         output = "".join(pieces)
