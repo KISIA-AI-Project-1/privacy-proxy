@@ -40,6 +40,7 @@ from l4.recognizers.patterns import (
     ADDRESS_ROAD_PATTERN,
     BANK_DIGIT_GROUPS,
     EXCLUDE_PATTERNS,
+    LEGAL_DONG,
     ORDER_ID_DATE_EXCLUDE,
     PATTERNS,
 )
@@ -318,18 +319,25 @@ def find_address_road(text: str, segment_id: str = "seg-1") -> list[DetectedPII]
 
 def find_address_lot(text: str, segment_id: str = "seg-1") -> list[DetectedPII]:
     """지번. "번지"/"산" 리터럴 자체가 자격 조건이라 순수 숫자-숫자(주문번호
-    형식 등)는 후보가 안 생긴다.
+    형식 등)는 후보가 안 생긴다. 동/리 갈래는 법정동 사전에 있는 이름만 채택한다.
     """
-    return [
-        _emit_fixed(
-            "ADDRESS_LOT",
-            "L4_RECOGNIZER_ADDRESS_LOT",
-            0.45 if match["dong"] else 0.7,
-            match,
-            segment_id,
+    results: list[DetectedPII] = []
+    pos = 0
+    while match := ADDRESS_LOT_PATTERN.search(text, pos):
+        if match["dong"] and match["name"] not in LEGAL_DONG:
+            pos = match.start() + 1  # 뒤에 오는 "12번지" 등을 삼키지 않는다
+            continue
+        results.append(
+            _emit_fixed(
+                "ADDRESS_LOT",
+                "L4_RECOGNIZER_ADDRESS_LOT",
+                0.45 if match["dong"] else 0.7,
+                match,
+                segment_id,
+            )
         )
-        for match in ADDRESS_LOT_PATTERN.finditer(text)
-    ]
+        pos = match.end()
+    return results
 
 
 def find_address_detail(text: str, segment_id: str = "seg-1") -> list[DetectedPII]:
