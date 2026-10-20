@@ -2,6 +2,7 @@
 
 import pytest
 
+from privacy_proxy.risk.resolver import resolve_overlaps
 from privacy_proxy.risk.stage import run_l5_risk_scoring
 from privacy_proxy.schemas import DetectedPII, DetectionTier, ProxyContext
 
@@ -16,6 +17,28 @@ def detection(entity_type: str, value: str, start: int = 0) -> DetectedPII:
         tier=DetectionTier.RULE_ANCHORED,
         source="integration-fixture",
     )
+
+
+async def test_l5_passes_full_original_prompt_to_resolver(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prompt = "첫 번째 문장\n송장번호: 112412345601"
+    value = "112412345601"
+    entity = detection("TRACKING_NUMBER", value, prompt.index(value))
+    received: list[str | None] = []
+
+    def capture(entities: list[DetectedPII], *, raw_prompt: str | None = None) -> list[DetectedPII]:
+        received.append(raw_prompt)
+        assert raw_prompt is not None
+        assert raw_prompt[entities[0].start_idx : entities[0].end_idx] == value
+        return resolve_overlaps(entities, raw_prompt=raw_prompt)
+
+    monkeypatch.setattr("privacy_proxy.risk.score.resolve_overlaps", capture)
+    result = await run_l5_risk_scoring(ProxyContext(raw_prompt=prompt, detected_entities=[entity]))
+
+    assert result.status == "success"
+    assert received == [prompt]
+    assert result.detected_entities == resolve_overlaps([entity])
 
 
 @pytest.mark.asyncio

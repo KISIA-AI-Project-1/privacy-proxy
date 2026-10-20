@@ -93,7 +93,9 @@ def assess_risk(context: ProxyContext) -> ProxyContext:
     if unsupported_types:
         raise ValueError("unsupported detected entity type")
 
-    context.detected_entities = resolve_overlaps(context.detected_entities)
+    context.detected_entities = resolve_overlaps(
+        context.detected_entities, raw_prompt=context.raw_prompt
+    )
     classes = [(entity, privacy_class(entity)) for entity in context.detected_entities]
 
     features = select_representative_qis(context.detected_entities)
