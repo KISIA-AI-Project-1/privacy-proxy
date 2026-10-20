@@ -31,12 +31,19 @@ def _group(entity: DetectedPII) -> tuple[str, str, DetectionTier]:
     return entity.source, str(entity.entity_type), entity.tier
 
 
-def resolve_overlaps(entities: list[DetectedPII]) -> list[DetectedPII]:
+def resolve_overlaps(
+    entities: list[DetectedPII], *, raw_prompt: str | None = None
+) -> list[DetectedPII]:
     """Tier-first resolution; reject lost coverage or weaker protection.
 
     Confidence is compared only within one explicit producer/type/tier group,
     when every value in that group is measured. Group keys precede confidence
     to keep sorting transitive and independent of input order.
+
+    raw_prompt is the full original text in the entities' global coordinate
+    system, reserved for anchor context checks once L4 evidence is available.
+    Omitting it preserves compatibility with existing standalone callers.
+    Resolution currently remains tier-first with or without this text.
     """
     comparable = {
         _group(entity) for entity in entities if entity.source and entity.source != "unknown"
