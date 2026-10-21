@@ -111,8 +111,9 @@ def test_comparable_scores_and_null_group_are_order_independent() -> None:
     high, low = entity(confidence=0.9), entity(confidence=0.2)
     assert resolve_overlaps([low, high]) == [high]
     unknown = entity()
-    results = [resolve_overlaps(list(items)) for items in permutations([high, low, unknown])]
-    assert all(result == results[0] for result in results)
+    for items in permutations([high, low, unknown]):
+        with pytest.raises(ValueError, match="ambiguous uncomparable confidence"):
+            resolve_overlaps(list(items))
 
 
 def test_different_sources_do_not_compete_on_confidence() -> None:
