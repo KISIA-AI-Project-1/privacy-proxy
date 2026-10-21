@@ -18,7 +18,7 @@ from privacy_proxy.schemas import DetectedPII, DetectionTier, ProxyContext
 ENTITY = "DATE_OF_BIRTH"
 SEGMENT = "dob-segment-1"
 
-FIELDS = (
+CORE_FIELDS = (
     "segment_id",
     "start_idx",
     "end_idx",
@@ -29,6 +29,14 @@ FIELDS = (
     "original_value",
     "normalized",
 )
+
+ANCHOR_FIELDS = (
+    "anchor_text",
+    "anchor_start",
+    "anchor_end",
+)
+
+FIELDS = CORE_FIELDS + ANCHOR_FIELDS
 
 
 @pytest.fixture
@@ -81,7 +89,7 @@ def _check_detection(
 
     assert tuple(payload) == FIELDS
     assert set(payload) == set(DetectedPII.model_fields)
-    assert len(payload) == 9
+    assert len(payload) == len(FIELDS)
 
     assert detection.segment_id == segment
     assert detection.entity_type == ENTITY
