@@ -524,6 +524,8 @@ def test_has_anchor_반환_형식_유지() -> None:
         (find_order_id, "20260830123456 주문번호", "주문번호"),
         (find_customer_id, "고객번호 12345678", "고객번호"),
         (find_customs_clearance_id, "개인통관고유부호 P123456789012", "개인통관고유부호"),
+        (find_account_number, "계좌번호 110-123-456789", "계좌번호"),
+        (find_account_number, "계좌번호 123-4567890", "계좌번호"),
     ],
 )
 def test_탐지_결과에_선택된_앵커_좌표가_실린다(finder, text: str, anchor: str) -> None:  # type: ignore[no-untyped-def]

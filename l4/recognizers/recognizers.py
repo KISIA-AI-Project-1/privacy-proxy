@@ -252,10 +252,8 @@ def find_account_number(text: str, segment_id: str = "seg-1") -> list[DetectedPI
     for match in ACCOUNT_NUMBER_3GRP.finditer(text):
         if _excluded(text, match.start(), match.end()):
             continue
-        found, distance = has_anchor(
-            text, match.start(), match.end(), ANCHORS["ACCOUNT_NUMBER"], _WINDOW
-        )
-        if not found:
+        hit = find_anchor(text, match.start(), match.end(), ANCHORS["ACCOUNT_NUMBER"], _WINDOW)
+        if hit is None:
             continue
         bonus = _bank_digit_bonus(text, match.start(), match.end(), match.group())
         results.append(
@@ -264,9 +262,10 @@ def find_account_number(text: str, segment_id: str = "seg-1") -> list[DetectedPI
                 "L4_RECOGNIZER_ACCOUNT",
                 0.45,
                 match,
-                distance,
+                hit.distance,
                 segment_id,
                 bonus,
+                anchor=hit,
             )
         )
         covered.append(match.span())
@@ -276,13 +275,19 @@ def find_account_number(text: str, segment_id: str = "seg-1") -> list[DetectedPI
             continue
         if _excluded(text, match.start(), match.end()):
             continue
-        found, distance = has_anchor(
-            text, match.start(), match.end(), ANCHORS["ACCOUNT_NUMBER"], _WINDOW
-        )
-        if not found:
+        hit = find_anchor(text, match.start(), match.end(), ANCHORS["ACCOUNT_NUMBER"], _WINDOW)
+        if hit is None:
             continue
         results.append(
-            _emit("ACCOUNT_NUMBER", "L4_RECOGNIZER_ACCOUNT", 0.35, match, distance, segment_id)
+            _emit(
+                "ACCOUNT_NUMBER",
+                "L4_RECOGNIZER_ACCOUNT",
+                0.35,
+                match,
+                hit.distance,
+                segment_id,
+                anchor=hit,
+            )
         )
 
     return results
