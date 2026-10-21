@@ -15,6 +15,7 @@ from l4.recognizers import (
     find_order_id,
     find_tracking_number,
 )
+from l4.recognizers.context import find_anchor, has_anchor
 from l4.recognizers.recognizers import _excluded
 from pydantic import ValidationError
 
@@ -462,3 +463,86 @@ def test_상세주소_일반_서술도_매치되지만_confidence_가장_낮다(
     assert _types(results) == ["ADDRESS_DETAIL"]
     assert results[0].confidence == 0.25
     assert results[0].confidence < 0.45  # 호/동호 갈래보다 뚜렷이 낮다
+
+
+def test_find_anchor_앞쪽_앵커_좌표와_거리() -> None:
+    text = "송장번호: 112412345601"
+    hit = find_anchor(text, 6, 18, ["송장번호"])
+
+    assert hit is not None
+    assert (hit.text, hit.start, hit.end, hit.distance) == ("송장번호", 0, 4, 2)
+
+
+def test_find_anchor_뒤쪽_앵커_거리는_span_끝_기준() -> None:
+    text = "112412345601 송장번호입니다"
+    hit = find_anchor(text, 0, 12, ["송장번호"])
+
+    assert hit is not None
+    assert (hit.start, hit.end, hit.distance) == (13, 17, 1)
+
+
+def test_find_anchor_좌표는_text_기준이라_offset을_더하면_전체_원문과_일치() -> None:
+    prefix = "안녕하세요. "
+    text = "송장번호 112412345601"
+    full = prefix + text
+    hit = find_anchor(text, 5, 17, ["송장번호"])
+
+    assert hit is not None
+    base = len(prefix)
+    assert full[base + hit.start : base + hit.end] == hit.text
+
+
+def test_find_anchor_동률이면_앞쪽_앵커() -> None:
+    hit = find_anchor("주문 123 송장", 3, 6, ["주문", "송장"], 25)
+
+    assert hit is not None
+    assert hit.text == "주문"
+
+
+def test_find_anchor_동률이면_더_긴_앵커() -> None:
+    # 뒤쪽 시작 위치가 같은 "송장"/"송장번호" — 목록 순서와 무관하게 긴 쪽.
+    for anchors in (["송장", "송장번호"], ["송장번호", "송장"]):
+        hit = find_anchor("112412345601송장번호", 0, 12, anchors)
+
+        assert hit is not None
+        assert hit.text == "송장번호"
+
+
+def test_find_anchor_창_밖이면_none() -> None:
+    assert find_anchor("송장번호" + "가" * 30 + "123456", 34, 40, ["송장번호"]) is None
+
+
+def test_has_anchor_반환_형식_유지() -> None:
+    assert has_anchor("송장번호 1234", 5, 9, ["송장번호"]) == (True, 1)
+    assert has_anchor("1234", 0, 4, ["송장번호"]) == (False, 26)
+
+
+@pytest.mark.parametrize(
+    "finder,text,anchor",
+    [
+        (find_tracking_number, "송장번호: ABCD12345678", "송장번호"),
+        (find_order_id, "20260830123456 주문번호", "주문번호"),
+        (find_customer_id, "고객번호 12345678", "고객번호"),
+        (find_customs_clearance_id, "개인통관고유부호 P123456789012", "개인통관고유부호"),
+        (find_account_number, "계좌번호 110-123-456789", "계좌번호"),
+        (find_account_number, "계좌번호 123-4567890", "계좌번호"),
+    ],
+)
+def test_탐지_결과에_선택된_앵커_좌표가_실린다(finder, text: str, anchor: str) -> None:  # type: ignore[no-untyped-def]
+    [result] = finder(text)
+
+    assert result.anchor_text == anchor
+    assert result.anchor_start is not None and result.anchor_end is not None
+    assert text[result.anchor_start : result.anchor_end] == anchor
+
+
+def test_앵커_없는_통관고유부호는_앵커_필드가_비어있다() -> None:
+    [result] = find_customs_clearance_id("P123456789012 입니다")
+
+    assert (result.anchor_text, result.anchor_start, result.anchor_end) == (None, None, None)
+
+
+def test_고객번호는_경쟁_앵커가_아닌_자기_앵커를_싣는다() -> None:
+    [result] = find_customer_id("고객번호 12345678 송장번호는 따로")
+
+    assert result.anchor_text == "고객번호"
