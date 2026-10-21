@@ -24,13 +24,16 @@ class DetectionBoundaryTests(unittest.TestCase):
         values.update(overrides)
         return DetectedPII(**values)
 
-    def test_canonical_serialization_has_exact_nine_fields(self):
+    def test_canonical_serialization_includes_optional_anchor_fields(self):
         detection = self.detection()
         payload = detection.model_dump()
         self.assertEqual(tuple(payload), tuple(DetectedPII.model_fields))
         self.assertEqual(set(payload), KEYS)
         self.assertIsNone(payload["confidence"])
         self.assertIs(payload["tier"], DetectionTier.RULE_ANCHORED)
+        self.assertIsNone(payload["anchor_text"])
+        self.assertIsNone(payload["anchor_start"])
+        self.assertIsNone(payload["anchor_end"])
 
     def test_validate_span_accepts_valid_raw_coordinates(self):
         validate_span("!abc!", 1, 4)

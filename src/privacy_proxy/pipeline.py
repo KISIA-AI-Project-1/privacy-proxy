@@ -18,6 +18,7 @@ from redis import Redis
 from audit.logger import audit_log_l9
 from privacy_proxy.adapters import AdapterRouter
 from privacy_proxy.config import get_settings
+from privacy_proxy.l4_adapter import translate_segment_detection
 from privacy_proxy.l4_ner import detect_l4_ner
 from privacy_proxy.risk import run_l5_risk_scoring
 from privacy_proxy.schemas import (
@@ -97,17 +98,25 @@ def _to_detected_pii(
     det: Any,
     offset_base: int,
 ) -> DetectedPII:
-    """입력 문자열 기준 탐지 위치를 전체 원문 기준으로 변환한다."""
-    return DetectedPII(
+    """탐지 결과를 공통 스키마로 만들고 전체 원문 좌표로 변환한다."""
+    local_detection = DetectedPII(
         segment_id=det.segment_id,
-        start_idx=det.start_idx + offset_base,
-        end_idx=det.end_idx + offset_base,
+        start_idx=det.start_idx,
+        end_idx=det.end_idx,
         entity_type=det.entity_type,
         confidence=det.confidence,
         source=det.source,
         tier=det.tier,
         original_value=det.original_value,
         normalized=det.normalized,
+        anchor_text=getattr(det, "anchor_text", None),
+        anchor_start=getattr(det, "anchor_start", None),
+        anchor_end=getattr(det, "anchor_end", None),
+    )
+
+    return translate_segment_detection(
+        local_detection,
+        offset_base=offset_base,
     )
 
 

@@ -1,9 +1,64 @@
+import re
 from collections.abc import AsyncGenerator, AsyncIterable
 from time import perf_counter
 from typing import cast
 
 from privacy_proxy.config import get_settings
 from privacy_proxy.schemas import ProxyContext
+
+_JOSA_PAIRS = (
+    ("이에요", "예요"),
+    ("이라고", "라고"),
+    ("이랑", "랑"),
+    ("이나", "나"),
+    ("으로", "로"),
+    ("은", "는"),
+    ("이", "가"),
+    ("을", "를"),
+    ("과", "와"),
+)
+
+_JOSA_PAIR_OF = {form: pair for pair in _JOSA_PAIRS for form in pair}
+_JOSA_FORMS = sorted(_JOSA_PAIR_OF, key=len, reverse=True)
+_JOSA_RE = re.compile(
+    "(" + "|".join(re.escape(form) for form in _JOSA_FORMS) + r")(?![0-9A-Za-z_가-힣])"
+)
+_JOSA_LOOKAHEAD = max(map(len, _JOSA_FORMS)) + 1
+
+
+def _restore_name_josa(
+    original: str,
+    following: str,
+    *,
+    final: bool,
+) -> tuple[str, int] | None:
+    """원래 이름에 맞는 조사와 소비할 글자 수를 반환한다.
+
+    None은 조사와 그 다음 글자가 올 때까지 기다리라는 뜻이다.
+    """
+    if not original:
+        return "", 0
+
+    code = ord(original[-1]) - 0xAC00
+    if not 0 <= code <= 11171:
+        return "", 0
+
+    if not final and len(following) < _JOSA_LOOKAHEAD:
+        return None
+
+    match = _JOSA_RE.match(following)
+    if match is None:
+        return "", 0
+
+    jong = code % 28
+    with_batchim, without_batchim = _JOSA_PAIR_OF[match.group(1)]
+
+    if with_batchim == "으로":
+        corrected = "로" if jong in (0, 8) else "으로"
+    else:
+        corrected = without_batchim if jong == 0 else with_batchim
+
+    return corrected, match.end()
 
 
 async def restore_l8(context: ProxyContext) -> ProxyContext:
@@ -20,6 +75,10 @@ async def restore_l8(context: ProxyContext) -> ProxyContext:
         return context
 
     fake_keys = sorted(mapping, key=len, reverse=True)
+
+    name_keys = {
+        key for key in mapping if context.token_types.get(key) in {"PERSON_KO", "PERSON_EN"}
+    }
 
     source = cast(
         AsyncIterable[str],
@@ -49,8 +108,25 @@ async def restore_l8(context: ProxyContext) -> ProxyContext:
             )
 
             if matched_key is not None:
-                output.append(mapping[matched_key])
-                position += len(matched_key)
+                original = mapping[matched_key]
+                next_position = position + len(matched_key)
+                josa = ""
+                consumed = 0
+
+                if matched_key in name_keys:
+                    correction = _restore_name_josa(
+                        original,
+                        buffer[next_position:],
+                        final=final,
+                    )
+
+                    if correction is None:
+                        break
+
+                    josa, consumed = correction
+
+                output.append(original + josa)
+                position = next_position + consumed
             else:
                 output.append(buffer[position])
                 position += 1

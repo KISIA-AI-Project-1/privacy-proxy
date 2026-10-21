@@ -102,7 +102,7 @@ def test_models_module_reexports_schema_ssot() -> None:
     assert LegacyDetectedPII is DetectedPII
 
 
-def test_detection_serializes_exact_nine_field_contract() -> None:
+def test_detection_serializes_contract_with_optional_anchor_fields() -> None:
     detection = DetectedPII(
         entity_type=EntityType.KR_BRN,
         original_value="123-45-67890",
@@ -127,6 +127,9 @@ def test_detection_serializes_exact_nine_field_contract() -> None:
         "normalized",
         "tier",
         "source",
+        "anchor_text",
+        "anchor_start",
+        "anchor_end",
     }
     assert payload["entity_type"] == "KR_BRN"
     assert payload["tier"] == "rule_anchored"
@@ -163,3 +166,48 @@ def test_removed_names_are_not_silently_accepted(old_name: str) -> None:
     )
     with pytest.raises(ValueError, match="unsupported detected entity type"):
         assess_risk(ProxyContext(raw_prompt="test", detected_entities=[detection]))
+
+
+def test_detection_accepts_complete_anchor_evidence() -> None:
+    detection = DetectedPII(
+        entity_type="TRACKING_NUMBER",
+        original_value="112412345601",
+        start_idx=5,
+        end_idx=17,
+        confidence=None,
+        tier=DetectionTier.RULE_ANCHORED,
+        source="CONTRACT_TEST",
+        anchor_text="송장번호",
+        anchor_start=0,
+        anchor_end=4,
+    )
+
+    assert detection.anchor_text == "송장번호"
+    assert detection.anchor_start == 0
+    assert detection.anchor_end == 4
+
+
+@pytest.mark.parametrize(
+    "anchor_fields",
+    [
+        {"anchor_text": "송장번호"},
+        {"anchor_start": 0, "anchor_end": 4},
+        {"anchor_text": "송장번호", "anchor_start": 4, "anchor_end": 4},
+        {"anchor_text": "송장번호", "anchor_start": 0, "anchor_end": 3},
+        {"anchor_text": "송장번호", "anchor_start": -1, "anchor_end": 3},
+    ],
+)
+def test_detection_rejects_invalid_anchor_evidence(anchor_fields) -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        DetectedPII(
+            entity_type="TRACKING_NUMBER",
+            original_value="112412345601",
+            start_idx=5,
+            end_idx=17,
+            confidence=None,
+            tier=DetectionTier.RULE_ANCHORED,
+            source="CONTRACT_TEST",
+            **anchor_fields,
+        )
