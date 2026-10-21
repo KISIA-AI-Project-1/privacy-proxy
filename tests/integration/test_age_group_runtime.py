@@ -34,7 +34,7 @@ RAW = "고객은 30대입니다."
 REFINED = "고객은 30대 초반입니다."
 SEGMENT = "h2-segment-42"
 PRIVATE = "H2_PRIVATE_ERROR_SENTINEL"
-FIELDS = (
+CORE_FIELDS = (
     "segment_id",
     "start_idx",
     "end_idx",
@@ -45,6 +45,14 @@ FIELDS = (
     "original_value",
     "normalized",
 )
+
+ANCHOR_FIELDS = (
+    "anchor_text",
+    "anchor_start",
+    "anchor_end",
+)
+
+FIELDS = CORE_FIELDS + ANCHOR_FIELDS
 ENTITIES = {
     "KR_RRN",
     "KR_FRN",
@@ -81,7 +89,7 @@ def isolated():
 def check_payload(payload, raw, segment=SEGMENT):
     assert tuple(payload) == FIELDS == tuple(DetectedPII.model_fields)
     assert set(payload) == set(DetectedPII.model_fields)
-    assert len(payload) == 9
+    assert len(payload) == len(FIELDS)
     assert payload["segment_id"] == segment
     assert payload["entity_type"] == "AGE_GROUP"
     assert payload["confidence"] is None
@@ -96,7 +104,10 @@ def check_payload(payload, raw, segment=SEGMENT):
 
 def check_detection(detection, raw, segment=SEGMENT):
     assert type(detection) is DetectedPII
-    assert detection.model_fields_set == set(FIELDS)
+    assert detection.anchor_text is None
+    assert detection.anchor_start is None
+    assert detection.anchor_end is None
+    assert detection.model_fields_set == set(CORE_FIELDS)
     check_payload(detection.model_dump(), raw, segment)
     wire = detection.model_dump(mode="json")
     assert tuple(wire) == FIELDS
@@ -230,7 +241,7 @@ def test_sc_conformance_negative_controls(service, field, value):
         check_payload(payload, RAW)
 
 
-@pytest.mark.parametrize("key", FIELDS)
+@pytest.mark.parametrize("key", CORE_FIELDS)
 def test_sc_missing_key(service, key):
     payload = service.analyze(RAW, SEGMENT, entities=["AGE_GROUP"])[0].model_dump()
     del payload[key]

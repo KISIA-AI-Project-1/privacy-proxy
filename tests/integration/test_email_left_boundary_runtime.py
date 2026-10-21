@@ -17,6 +17,9 @@ EXPECTED_KEYS = {
     "tier",
     "original_value",
     "normalized",
+    "anchor_text",
+    "anchor_start",
+    "anchor_end",
 }
 
 
