@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 _SAFE_ERROR_CODES = frozenset(
     {
         "L2_PARSING_FAILED",
+        "L2_UNSUPPORTED_FIELD",
         "L2_REBUILD_FAILED",
         "MULTI_SEGMENT_NOT_SUPPORTED",
         "L3_DETECTION_FAILED",

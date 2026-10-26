@@ -19,6 +19,7 @@ from audit.logger import audit_log_l9
 from privacy_proxy.adapters import AdapterRouter
 from privacy_proxy.config import get_settings
 from privacy_proxy.l4_ner import detect_l4_ner
+from privacy_proxy.request_fields import find_unsupported_fields
 from privacy_proxy.risk import run_l5_risk_scoring
 from privacy_proxy.schemas import (
     DetectedPII,
@@ -200,6 +201,13 @@ async def run_privacy_pipeline(
     except Exception:
         context.status = "failed"
         context.error = "L2_PARSING_FAILED"
+        return await audit_log_l9(context)
+
+    # 세그먼트로 추출하지 않는 필드(user, metadata, message.name 등)는 탐지 경로가 없다.
+    # 허용 목록 밖의 필드가 있으면 외부로 보내지 않는다. 필드 경로·값은 오류에 담지 않는다.
+    if find_unsupported_fields(parsed.vendor, body):
+        context.status = "failed"
+        context.error = "L2_UNSUPPORTED_FIELD"
         return await audit_log_l9(context)
 
     # [L1 인가] 요청 모델의 사용 권한 확인

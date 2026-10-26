@@ -136,8 +136,65 @@ CASES = (
 )
 
 
+# --- L5 plan -> L6 actual action contract -------------------------------------------------
+# Deliberately NOT imported from src: the checker must not share the code under test.
+# `applied` in the API response is derived from the L6 outcome, so comparing it with the
+# outcome proves nothing. The plan (`policy.action`) is what L6 is required to honor.
+POLICY_ACTIONS = frozenset({"TOKENIZE", "GENERALIZE", "ALLOW"})
+DEFAULT_OUTCOME: dict[str, frozenset[str]] = {
+    "TOKENIZE": frozenset({"TOKENIZE"}),
+    "GENERALIZE": frozenset({"GENERALIZE"}),
+    "ALLOW": frozenset({"KEEP"}),
+}
+# Direct/service identifiers and sensitive info: always reversibly tokenized, whatever L5 says.
+ALWAYS_TOKENIZED = frozenset(
+    {
+        "PERSON_KO",
+        "PERSON_EN",
+        "PHONE_NUMBER",
+        "EMAIL_ADDRESS",
+        "ORDER_ID",
+        "CUSTOMER_ID",
+        "TRACKING_NUMBER",
+        "CUSTOMS_CLEARANCE_ID",
+        "ACCOUNT_NUMBER",
+        "KR_RRN",
+        "KR_PASSPORT",
+        "KR_FRN",
+        "KR_DRIVER_LICENSE",
+        "KR_BRN",
+        "DATE_OF_BIRTH",
+        "SENSITIVE_HEALTH",
+        "SENSITIVE_SEX_LIFE",
+    }
+)
+# Agreed exceptions to DEFAULT_OUTCOME. Each one is a team decision documented in
+# src/privacy_proxy/vault/tokenizer.py; changing one must be a deliberate edit here.
+CONTRACT_EXCEPTIONS: dict[tuple[str, str], frozenset[str]] = {
+    # No product taxonomy yet: protection requested -> reversible token (never KEEP).
+    ("PRODUCT_ITEM", "GENERALIZE"): frozenset({"TOKENIZE"}),
+    ("LOCATION_INFORMAL", "GENERALIZE"): frozenset({"TOKENIZE"}),
+    # Already coarse (e.g. "30대"): generalizing it again changes nothing.
+    ("AGE_GROUP", "GENERALIZE"): frozenset({"KEEP"}),
+    # Address fragments are never passed through raw, even when L5 says ALLOW.
+    ("ADDRESS", "ALLOW"): frozenset({"GENERALIZE"}),
+    ("ADDRESS_ROAD", "ALLOW"): frozenset({"GENERALIZE"}),
+    ("ADDRESS_LOT", "ALLOW"): frozenset({"GENERALIZE"}),
+    ("ADDRESS_DETAIL", "ALLOW"): frozenset({"GENERALIZE"}),
+}
+
+
+def allowed_outcomes(entity_type: str, planned: str) -> frozenset[str] | None:
+    """Actions L6 may legitimately take for a planned action. None = plan not allowed."""
+    if planned not in POLICY_ACTIONS:
+        return None
+    if entity_type in ALWAYS_TOKENIZED:
+        return DEFAULT_OUTCOME["TOKENIZE"] if planned == "TOKENIZE" else None
+    return CONTRACT_EXCEPTIONS.get((entity_type, planned), DEFAULT_OUTCOME[planned])
+
+
 def validate_applied(data: dict[str, Any]) -> list[str]:
-    """Cross-check each L5 display row with the actual L6 result, by coordinates."""
+    """Cross-check each L5 plan row with the actual L6 result, by coordinates."""
     policies = data.get("risk", {}).get("entity_policies")
     outcomes = data.get("anonymization", {}).get("entity_outcomes")
     if not isinstance(policies, list) or not isinstance(outcomes, list):
@@ -167,12 +224,47 @@ def validate_applied(data: dict[str, Any]) -> list[str]:
             or policy["entity_type"] != outcome["entity_type"]
         ):
             failures.append("APPLIED_OUTCOME_MISMATCH")
+        if outcome is not None:
+            allowed = allowed_outcomes(policy["entity_type"], policy.get("action", ""))
+            if allowed is None:
+                failures.append(f"POLICY_ACTION_NOT_ALLOWED:{policy['entity_type']}")
+            elif outcome["action"] not in allowed:
+                failures.append(
+                    f"POLICY_OUTCOME_VIOLATION:{policy['entity_type']}:"
+                    f"{policy['action']}->{outcome['action']}"
+                )
     if set(actual) != seen:
         failures.append("POLICY_OUTCOME_COVERAGE_MISMATCH")
     return failures
 
 
-def evaluate(case: Case, response: httpx.Response, sent: list[str]) -> dict[str, Any]:
+def validate_transformed(text: str, data: dict[str, Any], outgoing: str) -> list[str]:
+    """Check the actual outgoing string against each L6 outcome, not just reported values.
+
+    Single-segment only (every E2E case sends one message). GENERALIZE is not checked here:
+    a generalized value may legitimately keep part of the original (e.g. a province).
+    """
+    failures: list[str] = []
+    outcomes = data.get("anonymization", {}).get("entity_outcomes") or []
+    for outcome in outcomes:
+        if outcome["segment_id"] != "seg-1":
+            continue
+        raw = text[outcome["start_idx"] : outcome["end_idx"]]
+        if outcome["action"] == "TOKENIZE" and raw and raw in outgoing:
+            failures.append(f"TOKENIZED_VALUE_IN_OUTGOING:{outcome['entity_type']}")
+        if outcome["action"] == "KEEP" and raw not in outgoing:
+            failures.append(f"KEPT_VALUE_MISSING_FROM_OUTGOING:{outcome['entity_type']}")
+    return failures
+
+
+def evaluate(
+    case: Case,
+    response: httpx.Response,
+    sent: list[str],
+    bodies: list[str] | None = None,
+) -> dict[str, Any]:
+    """``bodies``: full JSON bodies captured at the HTTP transport. When given, the leak
+    check covers every field that left the process, not only the last message content."""
     result: dict[str, Any] = {"case": case.name, "scope": case.scope, "http": response.status_code}
     data = response.json()
     if response.status_code != 200:
@@ -186,9 +278,11 @@ def evaluate(case: Case, response: httpx.Response, sent: list[str]) -> dict[str,
         return result
     outgoing = sent[0]
     kinds = {item["entity_type"] for item in data["detection"]["entities"]}
-    leaks = [value for value in case.protected if value in outgoing]
+    haystack = "\n".join(bodies) if bodies else outgoing
+    leaks = [value for value in case.protected if value in haystack]
     missing = [kind for kind in case.required if kind not in kinds]
     failures: list[str] = validate_applied(data)
+    failures.extend(validate_transformed(case.text, data, outgoing))
     for value in case.kept:
         if value not in outgoing:
             failures.append("EXPECTED_KEPT_VALUE_MISSING")
@@ -244,6 +338,7 @@ def run(scope: str) -> tuple[int, dict[str, Any]]:
         "OPENAI_API_KEY": "synthetic-upstream-only",
     }
     sent: list[str] = []
+    bodies: list[str] = []
 
     def echo(request: httpx.Request) -> httpx.Response:
         if (
@@ -252,6 +347,7 @@ def run(scope: str) -> tuple[int, dict[str, Any]]:
         ):
             raise RuntimeError("UNEXPECTED_EXTERNAL_REQUEST")
         body = json.loads(request.content)
+        bodies.append(json.dumps(body, ensure_ascii=False))
         text = body["messages"][-1]["content"]
         sent.append(text)
         events = [
@@ -304,6 +400,7 @@ def run(scope: str) -> tuple[int, dict[str, Any]]:
                     if scope != "all" and case.scope != scope:
                         continue
                     sent.clear()
+                    bodies.clear()
                     response = client.post(
                         "/v1/demo/chat",
                         headers={"Authorization": "Bearer synthetic-e2e-only"},
@@ -312,7 +409,7 @@ def run(scope: str) -> tuple[int, dict[str, Any]]:
                             "messages": [{"role": "user", "content": case.text}],
                         },
                     )
-                    report["results"].append(evaluate(case, response, sent))
+                    report["results"].append(evaluate(case, response, sent, bodies))
         finally:
             get_settings.cache_clear()
     failed = sum(item["status"] != "PASS" for item in report["results"])
