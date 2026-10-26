@@ -87,10 +87,36 @@ def predict_spans(
     label_set: LabelSet,
     max_length: int = 512,
 ) -> list[Span]:
-    """평문 하나에서 엔티티 span 리스트를 뽑는다. entity_type은 L5 계약 이름."""
-    spans, offsets = encode_and_merge(text, model, tokenizer, label_set, max_length)
-    spans = arbitrate_josa(spans, offsets, text)
+    """평문 하나에서 엔티티 span 리스트를 뽑는다. entity_type은 L5 계약 이름.
+
+    토큰 한도를 넘는 긴 입력은 겹치는 윈도우로 나눠 전부 훑는다(잘라 버리면 뒤쪽이 무탐지).
+    """
+    spans: list[Span] = []
+    for start, end, own_start, own_end in _windows(len(text), max_length - 2):
+        window = text[start:end]
+        found, offsets = encode_and_merge(window, model, tokenizer, label_set, max_length)
+        for span in arbitrate_josa(found, offsets, window):
+            if own_start <= span.start + start < own_end:
+                spans.append(
+                    Span(span.start + start, span.end + start, span.entity_type, span.text)
+                )
     # L4가 실제로 쓰는 태그만 내보낸다. QT/DT/OG/TI는 주문번호 등을 잘못 잡는
     # 오탐 원인일 뿐이라 여기서 버린다 (RESULTS.md 이커머스 문맥 관찰 참고).
     filtered = [span for span in spans if span.entity_type in L4_ENTITY_TYPES]
     return _apply_entity_type_map(filtered)
+
+
+def _windows(length: int, size: int) -> list[tuple[int, int, int, int]]:
+    """``(시작, 끝, 담당 시작, 담당 끝)`` 윈도우 목록. 윈도우는 문자 ``size``개 이하(토큰은 문자당 1개 이하).
+
+    윈도우는 담당 구간 앞뒤로 ``size // 4`` 여유를 더 본다. 각 윈도우는 자기 담당 구간에서
+    시작하는 span만 내므로, 경계에 걸친 엔티티는 한 번만, 온전하게 나온다.
+    """
+    if length <= size:
+        return [(0, length, 0, length)]
+    margin = size // 4
+    step = size - 2 * margin
+    return [
+        (max(own - margin, 0), min(own + step + margin, length), own, min(own + step, length))
+        for own in range(0, length, step)
+    ]

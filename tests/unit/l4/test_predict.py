@@ -50,3 +50,34 @@ def test_L4_ENTITY_TYPE_MAP은_L4_ENTITY_TYPES를_전부_커버한다() -> None:
     바로 에러가 나는 게 낫다 — L5 계약 이름 누락은 곧 스키마 불일치다.
     """
     assert set(L4_ENTITY_TYPES) <= set(L4_ENTITY_TYPE_MAP)
+
+
+def test_긴_입력은_끝까지_덮고_경계에_걸친_span도_온전히_한_번만_나온다(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """512토큰 초과 입력의 뒤쪽이 잘리면 안 된다. 스텁이 'X' 연속 구간을 PS로 잡는다."""
+    import re
+
+    from l4.ner import predict
+
+    # 담당 구간 경계(255·510·765)를 가로지르는 20자 엔티티 3개 + 맨 끝 1개
+    text = list("가" * 1200)
+    for pos in (245, 500, 755, 1190):
+        text[pos : pos + 10] = "X" * 10
+    text = "".join(text)
+    monkeypatch.setattr(
+        predict,
+        "encode_and_merge",
+        lambda w, *a: (
+            [Span(m.start(), m.end(), "PS", m.group()) for m in re.finditer("X+", w)],
+            [],
+        ),
+    )
+    monkeypatch.setattr(predict, "arbitrate_josa", lambda spans, offsets, w: spans)
+
+    result = predict.predict_spans(text, None, None, None)  # type: ignore[arg-type]
+
+    assert [(s.start, s.end) for s in result] == [
+        (m.start(), m.end()) for m in re.finditer("X+", text)
+    ]
+    windows = predict._windows(len(text), 510)
+    assert all(end - start <= 510 for start, end, _, _ in windows)
+    assert windows[-1][1] == len(text)
