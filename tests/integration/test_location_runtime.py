@@ -31,6 +31,7 @@ from privacy_proxy.l3.tier_mapping import tier_for
 from privacy_proxy.schemas import DetectedPII, DetectionTier, ProxyContext
 from tests.fixtures import PASSPORT
 from tests.unit.test_location import (
+    CORE_FIELDS,
     ENTITY,
     FIELDS,
     PRIVATE,
@@ -57,8 +58,11 @@ EXISTING_TYPES = {
 
 def check_detection(detection, raw, surface, producer, segment=SEGMENT):
     assert type(detection) is DetectedPII
+    assert detection.anchor_text is None
+    assert detection.anchor_start is None
+    assert detection.anchor_end is None
     assert tuple(detection.model_dump()) == FIELDS
-    assert detection.model_fields_set == set(FIELDS)
+    assert detection.model_fields_set == set(CORE_FIELDS)
     assert detection.entity_type == ENTITY
     assert detection.segment_id == segment
     assert detection.confidence is None

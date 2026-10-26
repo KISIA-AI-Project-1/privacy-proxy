@@ -10,6 +10,56 @@
 
 from __future__ import annotations
 
+from typing import NamedTuple
+
+
+class AnchorHit(NamedTuple):
+    """선택된 앵커. ``start``/``end`` 는 ``text`` 기준 반개구간 좌표."""
+
+    distance: int
+    text: str
+    start: int
+    end: int
+
+
+def find_anchor(
+    text: str,
+    span_start: int,
+    span_end: int,
+    anchors: list[str],
+    window: int = 25,
+) -> AnchorHit | None:
+    """span 주변 ``window`` 문자 안에서 가장 가까운 앵커 하나.
+
+    앞쪽 앵커는 끝에서 span 시작까지, 뒤쪽 앵커는 span 끝에서 앵커 시작까지를
+    거리로 잰다. 동률이면 앞쪽 앵커, 그다음 더 긴 앵커 순으로 고른다. 한국어
+    CS 문장은 "주문번호 12345" 처럼 키워드가 값 앞에 오는 게 보통이다.
+    앵커가 없으면 ``None``.
+    """
+    lo = max(0, span_start - window)
+    left = text[lo:span_start]
+    right = text[span_end : span_end + window]
+
+    best: tuple[int, int, int, AnchorHit] | None = None
+    for anchor in anchors:
+        # 앞쪽: 여러 번 나오면 span에 가장 가까운(가장 오른쪽) 것을 쓴다.
+        pos = left.rfind(anchor)
+        if pos != -1:
+            dist = len(left) - pos - len(anchor)
+            hit = AnchorHit(dist, anchor, lo + pos, lo + pos + len(anchor))
+            key = (dist, 0, -len(anchor), hit)
+            if best is None or key[:3] < best[:3]:
+                best = key
+        # 뒤쪽: span 바로 뒤부터의 오프셋이 곧 거리다.
+        pos = right.find(anchor)
+        if pos != -1:
+            hit = AnchorHit(pos, anchor, span_end + pos, span_end + pos + len(anchor))
+            key = (pos, 1, -len(anchor), hit)
+            if best is None or key[:3] < best[:3]:
+                best = key
+
+    return best[3] if best else None
+
 
 def has_anchor(
     text: str,
@@ -18,30 +68,9 @@ def has_anchor(
     anchors: list[str],
     window: int = 25,
 ) -> tuple[bool, int]:
-    """span 주변 ``window`` 문자 안에 앵커 키워드가 있는지.
-
-    앞뒤 양방향을 보고 가장 가까운 앵커까지의 문자 거리를 잰다. 한국어 CS
-    문장은 "주문번호 12345" 처럼 키워드가 값 앞에 오는 게 보통이라, 앞/뒤가
-    같은 거리면 앞쪽이 선택된다(앞쪽을 먼저 훑는다).
-
-    Returns:
-        ``(발견 여부, 가장 가까운 앵커까지 거리)``. 없으면 ``(False, window + 1)``.
-    """
-    left = text[max(0, span_start - window) : span_start]
-    right = text[span_end : span_end + window]
-
-    best = window + 1
-    for anchor in anchors:
-        # 앞쪽: 여러 번 나오면 span에 가장 가까운(가장 오른쪽) 것을 쓴다.
-        pos = left.rfind(anchor)
-        if pos != -1:
-            best = min(best, len(left) - pos - len(anchor))
-        # 뒤쪽: span 바로 뒤부터의 오프셋이 곧 거리다.
-        pos = right.find(anchor)
-        if pos != -1:
-            best = min(best, pos)
-
-    return (best <= window, best if best <= window else window + 1)
+    """``find_anchor`` 의 ``(발견 여부, 거리)`` 형태. 없으면 ``(False, window + 1)``."""
+    hit = find_anchor(text, span_start, span_end, anchors, window)
+    return (True, hit.distance) if hit else (False, window + 1)
 
 
 def score(

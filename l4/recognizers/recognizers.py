@@ -31,7 +31,7 @@ import phonenumbers
 from presidio_analyzer.predefined_recognizers import EmailRecognizer
 
 from l4.recognizers.anchors import ANCHORS
-from l4.recognizers.context import has_anchor, score
+from l4.recognizers.context import AnchorHit, find_anchor, has_anchor, score
 from l4.recognizers.patterns import (
     ACCOUNT_NUMBER_2GRP,
     ACCOUNT_NUMBER_3GRP,
@@ -40,6 +40,7 @@ from l4.recognizers.patterns import (
     ADDRESS_ROAD_PATTERN,
     BANK_DIGIT_GROUPS,
     EXCLUDE_PATTERNS,
+    LEGAL_DONG,
     ORDER_ID_DATE_EXCLUDE,
     PATTERNS,
 )
@@ -95,6 +96,7 @@ def _emit(
     distance: int,
     segment_id: str,
     bonus: float = 0.0,
+    anchor: AnchorHit | None = None,
 ) -> DetectedPII:
     value = match.group()
     confidence = min(1.0, score(base_score, distance) + bonus)
@@ -108,6 +110,9 @@ def _emit(
         segment_id=segment_id,
         tier=DetectionTier.RULE_ANCHORED,
         source=source,
+        anchor_text=anchor.text if anchor else None,
+        anchor_start=anchor.start if anchor else None,
+        anchor_end=anchor.end if anchor else None,
     )
 
 
@@ -126,12 +131,12 @@ def _find_anchored(
             continue
         if extra_exclude is not None and extra_exclude.search(match.group()):
             continue
-        found, distance = has_anchor(
-            text, match.start(), match.end(), ANCHORS[entity_type], _WINDOW
-        )
-        if not found:
+        hit = find_anchor(text, match.start(), match.end(), ANCHORS[entity_type], _WINDOW)
+        if hit is None:
             continue
-        results.append(_emit(entity_type, source, base_score, match, distance, segment_id))
+        results.append(
+            _emit(entity_type, source, base_score, match, hit.distance, segment_id, anchor=hit)
+        )
     return results
 
 
@@ -144,7 +149,7 @@ def find_customs_clearance_id(text: str, segment_id: str = "seg-1") -> list[Dete
     for match in PATTERNS["CUSTOMS_CLEARANCE_ID"].finditer(text):
         if _excluded(text, match.start(), match.end()):
             continue
-        found, distance = has_anchor(
+        hit = find_anchor(
             text, match.start(), match.end(), ANCHORS["CUSTOMS_CLEARANCE_ID"], _WINDOW
         )
         # 앵커 없으면 거리 = window → score()가 base_score를 그대로 돌려준다.
@@ -154,8 +159,9 @@ def find_customs_clearance_id(text: str, segment_id: str = "seg-1") -> list[Dete
                 "L4_RECOGNIZER_CUSTOMS",
                 0.85,
                 match,
-                distance if found else _WINDOW,
+                hit.distance if hit else _WINDOW,
                 segment_id,
+                anchor=hit,
             )
         )
     return results
@@ -178,11 +184,10 @@ def find_customer_id(text: str, segment_id: str = "seg-1") -> list[DetectedPII]:
         if _excluded(text, match.start(), match.end()):
             continue
 
-        self_found, self_dist = has_anchor(
-            text, match.start(), match.end(), ANCHORS["CUSTOMER_ID"], _WINDOW
-        )
-        if not self_found:
+        self_hit = find_anchor(text, match.start(), match.end(), ANCHORS["CUSTOMER_ID"], _WINDOW)
+        if self_hit is None:
             continue
+        self_dist = self_hit.distance
 
         order_found, order_dist = has_anchor(
             text, match.start(), match.end(), ANCHORS["ORDER_ID"], _WINDOW
@@ -204,6 +209,7 @@ def find_customer_id(text: str, segment_id: str = "seg-1") -> list[DetectedPII]:
                 match,
                 self_dist,
                 segment_id,
+                anchor=self_hit,
             )
         )
     return results
@@ -246,10 +252,8 @@ def find_account_number(text: str, segment_id: str = "seg-1") -> list[DetectedPI
     for match in ACCOUNT_NUMBER_3GRP.finditer(text):
         if _excluded(text, match.start(), match.end()):
             continue
-        found, distance = has_anchor(
-            text, match.start(), match.end(), ANCHORS["ACCOUNT_NUMBER"], _WINDOW
-        )
-        if not found:
+        hit = find_anchor(text, match.start(), match.end(), ANCHORS["ACCOUNT_NUMBER"], _WINDOW)
+        if hit is None:
             continue
         bonus = _bank_digit_bonus(text, match.start(), match.end(), match.group())
         results.append(
@@ -258,9 +262,10 @@ def find_account_number(text: str, segment_id: str = "seg-1") -> list[DetectedPI
                 "L4_RECOGNIZER_ACCOUNT",
                 0.45,
                 match,
-                distance,
+                hit.distance,
                 segment_id,
                 bonus,
+                anchor=hit,
             )
         )
         covered.append(match.span())
@@ -270,13 +275,19 @@ def find_account_number(text: str, segment_id: str = "seg-1") -> list[DetectedPI
             continue
         if _excluded(text, match.start(), match.end()):
             continue
-        found, distance = has_anchor(
-            text, match.start(), match.end(), ANCHORS["ACCOUNT_NUMBER"], _WINDOW
-        )
-        if not found:
+        hit = find_anchor(text, match.start(), match.end(), ANCHORS["ACCOUNT_NUMBER"], _WINDOW)
+        if hit is None:
             continue
         results.append(
-            _emit("ACCOUNT_NUMBER", "L4_RECOGNIZER_ACCOUNT", 0.35, match, distance, segment_id)
+            _emit(
+                "ACCOUNT_NUMBER",
+                "L4_RECOGNIZER_ACCOUNT",
+                0.35,
+                match,
+                hit.distance,
+                segment_id,
+                anchor=hit,
+            )
         )
 
     return results
@@ -318,12 +329,25 @@ def find_address_road(text: str, segment_id: str = "seg-1") -> list[DetectedPII]
 
 def find_address_lot(text: str, segment_id: str = "seg-1") -> list[DetectedPII]:
     """지번. "번지"/"산" 리터럴 자체가 자격 조건이라 순수 숫자-숫자(주문번호
-    형식 등)는 후보가 안 생긴다.
+    형식 등)는 후보가 안 생긴다. 동/리 갈래는 법정동 사전에 있는 이름만 채택한다.
     """
-    return [
-        _emit_fixed("ADDRESS_LOT", "L4_RECOGNIZER_ADDRESS_LOT", 0.7, match, segment_id)
-        for match in ADDRESS_LOT_PATTERN.finditer(text)
-    ]
+    results: list[DetectedPII] = []
+    pos = 0
+    while match := ADDRESS_LOT_PATTERN.search(text, pos):
+        if match["dong"] and match["name"] not in LEGAL_DONG:
+            pos = match.start() + 1  # 뒤에 오는 "12번지" 등을 삼키지 않는다
+            continue
+        results.append(
+            _emit_fixed(
+                "ADDRESS_LOT",
+                "L4_RECOGNIZER_ADDRESS_LOT",
+                0.45 if match["dong"] else 0.7,
+                match,
+                segment_id,
+            )
+        )
+        pos = match.end()
+    return results
 
 
 def find_address_detail(text: str, segment_id: str = "seg-1") -> list[DetectedPII]:

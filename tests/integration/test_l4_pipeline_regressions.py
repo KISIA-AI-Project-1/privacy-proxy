@@ -48,3 +48,20 @@ async def test_existing_l4_wiring(
     assert context.final_response is not None
     assert "".join([chunk async for chunk in context.final_response]) == raw
     assert context.status == "success"
+
+
+def test_anchor_coordinates_follow_nonzero_offset_base() -> None:
+    from l4.recognizers import find_tracking_number
+
+    from privacy_proxy.pipeline import _to_detected_pii
+
+    segment = "송장번호: ABCD12345678 확인 부탁드려요"
+    prefix = "안녕하세요 문의드립니다\n"
+    [local] = find_tracking_number(segment)
+
+    entity = _to_detected_pii(local, len(prefix))
+
+    raw = prefix + segment
+    assert entity.anchor_start is not None and entity.anchor_end is not None
+    assert raw[entity.start_idx : entity.end_idx] == "ABCD12345678"
+    assert raw[entity.anchor_start : entity.anchor_end] == "송장번호"

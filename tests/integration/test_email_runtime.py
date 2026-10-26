@@ -52,6 +52,9 @@ class EmailIntegrationTests(unittest.TestCase):
                     "tier",
                     "original_value",
                     "normalized",
+                    "anchor_text",
+                    "anchor_start",
+                    "anchor_end",
                 ],
             )
             self.assertEqual(d.entity_type, "EMAIL_ADDRESS")

@@ -46,10 +46,18 @@ def translate_segment_detection(
     *,
     offset_base: int,
 ) -> DetectedPII:
-    """Translate an L4 recognizer detection from segment-local to global offsets."""
+    """탐지 구간과 앵커 구간을 세그먼트 기준에서 전체 원문 기준으로 옮긴다."""
     if offset_base < 0:
         raise ValueError("offset_base must be non-negative")
+
     payload = detection.model_dump(mode="python")
     payload["start_idx"] = detection.start_idx + offset_base
     payload["end_idx"] = detection.end_idx + offset_base
+
+    if detection.anchor_start is not None:
+        payload["anchor_start"] = detection.anchor_start + offset_base
+
+    if detection.anchor_end is not None:
+        payload["anchor_end"] = detection.anchor_end + offset_base
+
     return DetectedPII.model_validate(payload)

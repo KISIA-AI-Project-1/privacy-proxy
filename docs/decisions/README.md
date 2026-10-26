@@ -14,3 +14,7 @@
 `0001-제목.md` 형태로 번호를 붙여 [0000-template.md](0000-template.md)를 복사해 쓴다.
 한 번 머지된 ADR은 수정하지 않고, 뒤집을 때 새 ADR을 쓰고 이전 것을
 `Superseded`로 표시한다.
+
+## L5 최신 결정
+
+- [0005 — 앵커 기반 면허 충돌 예외와 명시적 동률 비교](0005-l5-anchor-priority-and-explicit-ties.md): ADR 0003의 JSON 동률 비교를 대체. 로컬 구현·검증 완료, 팀 검토 대기.

@@ -42,6 +42,7 @@ def _run(text: str, dets: list[DetectedPII]) -> tuple[ProxyContext, str]:
             (p.segment_id, p.start_idx, p.end_idx): p.action for p in context.entity_policies
         },
     )
+    context.vault_mapping = result.vault_mapping
     return context, result.anonymized_prompt
 
 
@@ -101,8 +102,13 @@ def test_product_and_purchase_pattern_do_not_fail_l6() -> None:
             _det(text, "010-9876-5432", "PHONE_NUMBER", DetectionTier.RULE_ANCHORED),
         ],
     )
-    assert _actions(context)["PRODUCT_ITEM"] == "ALLOW"
-    assert sent == "매달 임신테스트기 주문하는 계정이에요. 【PHONE_1】로 연락주세요."
+    # 변경
+    assert _actions(context)["PRODUCT_ITEM"] == "GENERALIZE"
+    assert _actions(context)["PURCHASE_PATTERN"] == "ALLOW"
+    assert sent == "매달 상품 주문하는 계정이에요. 【PHONE_1】로 연락주세요."
+    assert "임신테스트기" not in context.vault_mapping.values()
+    assert "매달" not in context.vault_mapping.values()
+    assert "010-9876-5432" in context.vault_mapping.values()
 
 
 def test_without_entity_policies_l6_keeps_old_behavior() -> None:

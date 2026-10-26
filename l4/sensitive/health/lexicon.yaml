@@ -57,3 +57,111 @@
 - {term: 갑상선 기능저하증}
 - {term: B형 간염}
 - {term: 성기 헤르페스}
+# 범용 시드: 정신
+- {term: 적응장애}
+- {term: 외상후스트레스장애}
+- {term: PTSD}
+- {term: 공황발작}
+- {term: 틱장애}
+- {term: 자폐증}
+- {term: 자폐스펙트럼}
+- {term: ADHD}
+- {term: 주의력결핍}
+- {term: 섭식장애}
+- {term: 폭식증}
+- {term: 알코올중독}
+- {term: 알코올의존}
+- {term: 약물중독}
+- {term: 도박중독}
+- {term: 수면무호흡증}
+- {term: 기면증}
+# 암·종양
+- {term: 간암}
+- {term: 췌장암}
+- {term: 자궁경부암}
+- {term: 자궁암}
+- {term: 난소암}
+- {term: 방광암}
+- {term: 식도암}
+- {term: 신장암}
+- {term: 피부암}
+- {term: 직장암}
+- {term: 담낭암}
+- {term: 후두암}
+- {term: 구강암}
+- {term: 뇌종양}
+- {term: 림프종}
+- {term: 골수종}
+# 감염
+- {term: 매독}
+- {term: 임질}
+- {term: 클라미디아}
+- {term: 헤르페스}
+- {term: 곤지름}
+# 순환기·호흡기·소화기
+- {term: 협심증}
+- {term: 부정맥}
+- {term: 심부전}
+- {term: 심방세동}
+- {term: 동맥경화}
+- {term: 뇌출혈}
+- {term: 뇌경색}
+- {term: 만성폐쇄성폐질환}
+- {term: COPD}
+- {term: 크론병}
+- {term: 궤양성대장염}
+- {term: 과민성대장증후군}
+- {term: 역류성식도염}
+- {term: 위궤양}
+- {term: 십이지장궤양}
+- {term: 지방간}
+- {term: 간경화}
+- {term: 췌장염}
+- {term: 담석}
+# 내분비·신경·면역·근골격·감각
+- {term: 갑상선기능항진증}
+- {term: 골다공증}
+- {term: 빈혈}
+- {term: 혈우병}
+- {term: 파킨슨}
+- {term: 알츠하이머}
+- {term: 뇌전증}
+- {term: 편두통}
+- {term: 다발성경화증}
+- {term: 루게릭}
+- {term: 루푸스}
+- {term: 건선}
+- {term: 습진}
+- {term: 백반증}
+- {term: 한포진}
+- {term: 강직성척추염}
+- {term: 섬유근육통}
+- {term: 척추측만증}
+- {term: 퇴행성관절염}
+- {term: 척추관협착증}
+- {term: 녹내장}
+- {term: 백내장}
+# 장애
+- {term: 시각장애}
+- {term: 청각장애}
+- {term: 지체장애}
+- {term: 지적장애}
+- {term: 발달장애}
+- {term: 뇌병변장애}
+# 비뇨·생식
+- {term: 질염}
+- {term: 방광염}
+- {term: 전립선비대증}
+- {term: 자궁근종}
+- {term: 자궁내막증}
+- {term: 다낭성난소증후군}
+- {term: 생리통}
+- {term: 무월경}
+- {term: 낙태}
+- {term: 임신중절}
+- {term: 신장이식}
+- {term: 폐경, frame: stage}
+- {term: 혈액투석, frame: stage}
+- {term: 피임주사}
+- {term: 피임패치}
+- {term: 배란테스트기, frame: use}

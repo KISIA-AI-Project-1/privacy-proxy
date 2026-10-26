@@ -104,3 +104,66 @@ async def test_token_number_prefixes_do_not_collide() -> None:
     parts = list(text)
     mapping = {"【PRODUCT_1】": "첫 상품", "【PRODUCT_10】": "열 번째 상품"}
     assert await restore_chunks(parts, mapping) == "첫 상품 / 열 번째 상품"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "alias,original,suffix,expected",
+    [
+        ("홍길동", "김철수", "이 왔어요.", "김철수가 왔어요."),
+        ("김철수", "홍길동", "가 왔어요.", "홍길동이 왔어요."),
+        ("홍길동", "김철수", "은 고객입니다.", "김철수는 고객입니다."),
+        ("홍길동", "김철수", "을 불렀어요.", "김철수를 불렀어요."),
+        ("홍길동", "김철수", "과 만났어요.", "김철수와 만났어요."),
+        ("홍길동", "김철수", "으로 등록했어요.", "김철수로 등록했어요."),
+        ("김철수", "김하늘", "로 등록했어요.", "김하늘로 등록했어요."),
+        ("홍길동", "김철수", "이에요.", "김철수예요."),
+        ("홍길동", "김철수", "이메일", "김철수이메일"),
+        ("홍길동", "김철수", "", "김철수"),
+        ("홍길동", "김철수", "이", "김철수가"),
+    ],
+)
+async def test_restore_name_josa_across_every_boundary(
+    alias: str,
+    original: str,
+    suffix: str,
+    expected: str,
+) -> None:
+    text = alias + suffix
+
+    for split in range(len(text) + 1):
+
+        async def source(boundary: int = split) -> AsyncGenerator[str, None]:
+            yield text[:boundary]
+            yield text[boundary:]
+
+        context = ProxyContext(
+            vault_mapping={alias: original},
+            token_types={alias: "PERSON_KO"},
+            llm_raw_response=source(),
+        )
+
+        await restore_l8(context)
+        assert context.final_response is not None
+        restored = "".join([chunk async for chunk in context.final_response])
+
+        assert restored == expected, f"청크 분리 위치: {split}"
+        assert context.status == "success"
+
+
+@pytest.mark.asyncio
+async def test_non_name_mapping_does_not_adjust_josa() -> None:
+    async def source() -> AsyncGenerator[str, None]:
+        yield "홍길동이 왔어요."
+
+    context = ProxyContext(
+        vault_mapping={"홍길동": "김철수"},
+        token_types={"홍길동": "PRODUCT_ITEM"},
+        llm_raw_response=source(),
+    )
+
+    await restore_l8(context)
+    assert context.final_response is not None
+    restored = "".join([chunk async for chunk in context.final_response])
+
+    assert restored == "김철수이 왔어요."
