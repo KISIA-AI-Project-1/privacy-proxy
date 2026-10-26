@@ -187,9 +187,6 @@ ALWAYS_TOKENIZED = frozenset(
 # src/privacy_proxy/vault/tokenizer.py; changing one must be a deliberate edit here.
 # tests/test_policy_contract_sweep.py checks this table against the real L5/L6 code.
 CONTRACT_EXCEPTIONS: dict[tuple[str, str], frozenset[str]] = {
-    # No product taxonomy yet: protection requested -> reversible token (never KEEP).
-    ("PRODUCT_ITEM", "GENERALIZE"): frozenset({"TOKENIZE"}),
-    ("LOCATION_INFORMAL", "GENERALIZE"): frozenset({"TOKENIZE"}),
     # Already coarse (e.g. "30대"): generalizing it again changes nothing.
     ("AGE_GROUP", "GENERALIZE"): frozenset({"KEEP"}),
     # L5 treats a date of birth as a quasi-identifier (plan ALLOW or GENERALIZE) but L6 always

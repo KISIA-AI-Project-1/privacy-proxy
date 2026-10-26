@@ -11,12 +11,13 @@ from e2e_leak_test import ALWAYS_TOKENIZED, CONTRACT_EXCEPTIONS, allowed_outcome
 
 from privacy_proxy.risk.entity_contract import L5_SUPPORTED_ENTITY_TYPES
 from privacy_proxy.risk.quasi_identifiers import PrivacyClass, privacy_class
+from privacy_proxy.risk.score import _entity_policies
 from privacy_proxy.schemas import DetectedPII, DetectionTier
 from privacy_proxy.vault.tokenizer import Strategy, resolve_spec
 
 
 def l5_possible_plans(entity_type: str) -> tuple[PrivacyClass, set[str]]:
-    """risk/score.py::_entity_policies가 이 유형에 낼 수 있는 계획 집합."""
+    """실제 risk/score.py::_entity_policies를 저/중/고 점수로 호출해 낼 수 있는 계획을 모은다."""
     sample = DetectedPII(
         segment_id="seg-1",
         start_idx=0,
@@ -29,13 +30,10 @@ def l5_possible_plans(entity_type: str) -> tuple[PrivacyClass, set[str]]:
         source="sweep",
     )
     kind = privacy_class(sample)
-    if entity_type == "PURCHASE_PATTERN":
-        return kind, {"ALLOW"}
-    if kind in (PrivacyClass.DIRECT, PrivacyClass.SERVICE, PrivacyClass.SENSITIVE):
-        return kind, {"TOKENIZE"}
-    if kind is PrivacyClass.QI:
-        return kind, {"GENERALIZE", "ALLOW"}
-    return kind, {"ALLOW"}
+    plans = {
+        _entity_policies([(sample, kind)], qi_score)[0].action for qi_score in (0.0, 45.0, 90.0)
+    }
+    return kind, plans
 
 
 def l6_actual_action(entity_type: str, plan: str) -> str:

@@ -94,10 +94,10 @@ def test_tokenize_planned_but_kept_is_rejected():
         ("AGE", "GENERALIZE", "GENERALIZE"),
         ("AGE", "ALLOW", "KEEP"),
         ("PRODUCT_ITEM", "ALLOW", "KEEP"),
+        ("PRODUCT_ITEM", "GENERALIZE", "GENERALIZE"),
+        ("LOCATION_INFORMAL", "GENERALIZE", "GENERALIZE"),
         ("PURCHASE_PATTERN", "ALLOW", "KEEP"),
         # 합의된 예외
-        ("PRODUCT_ITEM", "GENERALIZE", "TOKENIZE"),
-        ("LOCATION_INFORMAL", "GENERALIZE", "TOKENIZE"),
         ("AGE_GROUP", "GENERALIZE", "KEEP"),
         # L5는 생년월일을 준식별자로 보지만 L6는 항상 토큰화한다(보호 방향의 차이).
         ("DATE_OF_BIRTH", "TOKENIZE", "TOKENIZE"),
@@ -122,6 +122,8 @@ def test_allowed_plan_outcome_pairs_pass(entity_type, planned, actual):
         ("AGE", "ALLOW", "TOKENIZE"),
         ("PRODUCT_ITEM", "GENERALIZE", "KEEP"),
         ("PRODUCT_ITEM", "TOKENIZE", "KEEP"),
+        ("PRODUCT_ITEM", "GENERALIZE", "TOKENIZE"),
+        ("LOCATION_INFORMAL", "GENERALIZE", "TOKENIZE"),
         ("LOCATION_INFORMAL", "GENERALIZE", "KEEP"),
         ("ADDRESS_DETAIL", "ALLOW", "KEEP"),
         ("ADDRESS_DETAIL", "ALLOW", "GENERALIZE"),
@@ -154,8 +156,6 @@ def test_unknown_planned_action_fails():
 def test_exception_table_is_explicit_and_small():
     """예외를 몰래 늘리면 이 테스트가 깨진다. 늘릴 때는 합의 후 여기도 고친다."""
     assert set(CONTRACT_EXCEPTIONS) == {
-        ("PRODUCT_ITEM", "GENERALIZE"),
-        ("LOCATION_INFORMAL", "GENERALIZE"),
         ("AGE_GROUP", "GENERALIZE"),
         ("DATE_OF_BIRTH", "ALLOW"),
         ("DATE_OF_BIRTH", "GENERALIZE"),
