@@ -99,7 +99,13 @@ def test_tokenize_planned_but_kept_is_rejected():
         ("PRODUCT_ITEM", "GENERALIZE", "TOKENIZE"),
         ("LOCATION_INFORMAL", "GENERALIZE", "TOKENIZE"),
         ("AGE_GROUP", "GENERALIZE", "KEEP"),
-        ("ADDRESS_DETAIL", "ALLOW", "GENERALIZE"),
+        # L5는 생년월일을 준식별자로 보지만 L6는 항상 토큰화한다(보호 방향의 차이).
+        ("DATE_OF_BIRTH", "TOKENIZE", "TOKENIZE"),
+        ("DATE_OF_BIRTH", "ALLOW", "TOKENIZE"),
+        ("DATE_OF_BIRTH", "GENERALIZE", "TOKENIZE"),
+        # 주소류는 L5가 직접식별자로 분류하므로 계획은 항상 TOKENIZE다.
+        ("ADDRESS_DETAIL", "TOKENIZE", "TOKENIZE"),
+        ("ADDRESS", "TOKENIZE", "TOKENIZE"),
     ],
 )
 def test_allowed_plan_outcome_pairs_pass(entity_type, planned, actual):
@@ -118,14 +124,21 @@ def test_allowed_plan_outcome_pairs_pass(entity_type, planned, actual):
         ("PRODUCT_ITEM", "TOKENIZE", "KEEP"),
         ("LOCATION_INFORMAL", "GENERALIZE", "KEEP"),
         ("ADDRESS_DETAIL", "ALLOW", "KEEP"),
+        ("ADDRESS_DETAIL", "ALLOW", "GENERALIZE"),
         ("ADDRESS_DETAIL", "TOKENIZE", "KEEP"),
+        ("DATE_OF_BIRTH", "ALLOW", "KEEP"),
+        ("DATE_OF_BIRTH", "GENERALIZE", "GENERALIZE"),
         # 계획이 TOKENIZE인데 유지하면 합의된 예외가 아니다.
         ("PURCHASE_PATTERN", "TOKENIZE", "KEEP"),
         ("PHONE_NUMBER", "TOKENIZE", "SKIPPED"),
     ],
 )
 def test_disallowed_plan_outcome_pairs_fail(entity_type, planned, actual):
-    assert validate_applied(plan_and_outcome(entity_type, planned, actual))
+    errors = validate_applied(plan_and_outcome(entity_type, planned, actual))
+    # 다른 종류의 오류(좌표 불일치 등)가 아니라 정책 위반 때문에 실패해야 한다.
+    assert any(
+        e.startswith(("POLICY_OUTCOME_VIOLATION:", "POLICY_ACTION_NOT_ALLOWED:")) for e in errors
+    ), errors
 
 
 @pytest.mark.parametrize("planned", ["ALLOW", "GENERALIZE"])
@@ -144,10 +157,8 @@ def test_exception_table_is_explicit_and_small():
         ("PRODUCT_ITEM", "GENERALIZE"),
         ("LOCATION_INFORMAL", "GENERALIZE"),
         ("AGE_GROUP", "GENERALIZE"),
-        ("ADDRESS", "ALLOW"),
-        ("ADDRESS_ROAD", "ALLOW"),
-        ("ADDRESS_LOT", "ALLOW"),
-        ("ADDRESS_DETAIL", "ALLOW"),
+        ("DATE_OF_BIRTH", "ALLOW"),
+        ("DATE_OF_BIRTH", "GENERALIZE"),
     }
     assert all(allowed_outcomes(kind, "TOKENIZE") for kind in ALWAYS_TOKENIZED)
     assert all(allowed_outcomes(kind, "GENERALIZE") is None for kind in ALWAYS_TOKENIZED)
@@ -228,3 +239,14 @@ def test_leak_outside_last_message_is_detected_with_full_body_capture():
     assert evaluate(case, response, [case.text])["status"] == "PASS"
     # 전체 JSON을 보면 잡는다.
     assert evaluate(case, response, [case.text], [full_body])["status"] == "LEAK"
+
+
+def test_token_hint_label_is_not_mistaken_for_a_leak():
+    """【HEALTH_1:건강정보】의 라벨 글자가 원문과 같아도 오탐이 아니다."""
+    text = "건강정보"
+    data = outcomes_data(text, ("건강정보", "SENSITIVE_HEALTH", "TOKENIZE"))
+    assert validate_transformed(text, data, "【HEALTH_1:건강정보】") == []
+    # 토큰 밖에 원문이 남아 있으면 여전히 잡는다.
+    assert validate_transformed(text, data, "【HEALTH_1:건강정보】 건강정보") == [
+        "TOKENIZED_VALUE_IN_OUTGOING:SENSITIVE_HEALTH"
+    ]

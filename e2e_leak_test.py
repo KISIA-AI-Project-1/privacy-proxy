@@ -8,6 +8,7 @@ Exit 0: all checks passed; 1: regression failures; 2: dependencies not ready.
 import argparse
 import json
 import os
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -146,7 +147,11 @@ DEFAULT_OUTCOME: dict[str, frozenset[str]] = {
     "GENERALIZE": frozenset({"GENERALIZE"}),
     "ALLOW": frozenset({"KEEP"}),
 }
-# Direct/service identifiers and sensitive info: always reversibly tokenized, whatever L5 says.
+# Direct/service identifiers and sensitive info. L5 always plans TOKENIZE for these
+# (risk/quasi_identifiers.py: DIRECT / SERVICE / SENSITIVE classes) and L6 always tokenizes.
+# A different plan is a contract violation, so the plan itself is checked too.
+# NOTE: this is the L5 *class* list, not the L6 BASE_SPECS list. They differ for
+# DATE_OF_BIRTH, which L5 treats as a quasi-identifier (see CONTRACT_EXCEPTIONS).
 ALWAYS_TOKENIZED = frozenset(
     {
         "PERSON_KO",
@@ -163,24 +168,29 @@ ALWAYS_TOKENIZED = frozenset(
         "KR_FRN",
         "KR_DRIVER_LICENSE",
         "KR_BRN",
-        "DATE_OF_BIRTH",
         "SENSITIVE_HEALTH",
         "SENSITIVE_SEX_LIFE",
+        # L5 classifies all address types as direct identifiers -> plan is always TOKENIZE.
+        "ADDRESS",
+        "ADDRESS_ROAD",
+        "ADDRESS_LOT",
+        "ADDRESS_DETAIL",
     }
 )
-# Agreed exceptions to DEFAULT_OUTCOME. Each one is a team decision documented in
+# Agreed exceptions to DEFAULT_OUTCOME. Each one mirrors a documented behavior in
 # src/privacy_proxy/vault/tokenizer.py; changing one must be a deliberate edit here.
+# tests/test_policy_contract_sweep.py checks this table against the real L5/L6 code.
 CONTRACT_EXCEPTIONS: dict[tuple[str, str], frozenset[str]] = {
     # No product taxonomy yet: protection requested -> reversible token (never KEEP).
     ("PRODUCT_ITEM", "GENERALIZE"): frozenset({"TOKENIZE"}),
     ("LOCATION_INFORMAL", "GENERALIZE"): frozenset({"TOKENIZE"}),
     # Already coarse (e.g. "30대"): generalizing it again changes nothing.
     ("AGE_GROUP", "GENERALIZE"): frozenset({"KEEP"}),
-    # Address fragments are never passed through raw, even when L5 says ALLOW.
-    ("ADDRESS", "ALLOW"): frozenset({"GENERALIZE"}),
-    ("ADDRESS_ROAD", "ALLOW"): frozenset({"GENERALIZE"}),
-    ("ADDRESS_LOT", "ALLOW"): frozenset({"GENERALIZE"}),
-    ("ADDRESS_DETAIL", "ALLOW"): frozenset({"GENERALIZE"}),
+    # L5 treats a date of birth as a quasi-identifier (plan ALLOW or GENERALIZE) but L6 always
+    # tokenizes it. Safe direction (more protective), yet the dashboard's plan column and the
+    # real action differ: the team should decide whether L5 should plan TOKENIZE instead.
+    ("DATE_OF_BIRTH", "ALLOW"): frozenset({"TOKENIZE"}),
+    ("DATE_OF_BIRTH", "GENERALIZE"): frozenset({"TOKENIZE"}),
 }
 
 
@@ -238,6 +248,11 @@ def validate_applied(data: dict[str, Any]) -> list[str]:
     return failures
 
 
+def _strip_tokens(outgoing: str) -> str:
+    """Remove 【...】 replacement tokens so their label text is not mistaken for original text."""
+    return re.sub(r"【[^】]*】", "", outgoing)
+
+
 def validate_transformed(text: str, data: dict[str, Any], outgoing: str) -> list[str]:
     """Check the actual outgoing string against each L6 outcome, not just reported values.
 
@@ -250,7 +265,8 @@ def validate_transformed(text: str, data: dict[str, Any], outgoing: str) -> list
         if outcome["segment_id"] != "seg-1":
             continue
         raw = text[outcome["start_idx"] : outcome["end_idx"]]
-        if outcome["action"] == "TOKENIZE" and raw and raw in outgoing:
+        # Token hints such as 【HEALTH_1:건강정보】 are part of the replacement, not a leak.
+        if outcome["action"] == "TOKENIZE" and raw and raw in _strip_tokens(outgoing):
             failures.append(f"TOKENIZED_VALUE_IN_OUTGOING:{outcome['entity_type']}")
         if outcome["action"] == "KEEP" and raw not in outgoing:
             failures.append(f"KEPT_VALUE_MISSING_FROM_OUTGOING:{outcome['entity_type']}")

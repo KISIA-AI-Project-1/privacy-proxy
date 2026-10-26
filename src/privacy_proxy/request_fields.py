@@ -7,12 +7,14 @@
 허용 규칙
 - 최상위 키는 벤더별 허용 목록에 있어야 한다.
 - 텍스트가 실릴 수 있는 곳(``messages[*].content``, ``contents[*].parts[*].text``)은
-  L3~L6이 처리하는 세그먼트 경로이므로 이 모듈이 값을 보지 않는다.
+  L3~L6이 처리하는 세그먼트 경로이므로 **값은 보지 않고 구조(문자열인지, 다른 키가 없는지)만**
+  확인한다.
 - 그 밖의 옵션은 숫자/불리언만 허용한다. 문자열이 들어갈 수 있는 필드(``stop``, ``user``,
   ``metadata`` 등)는 탐지·치환 경로가 없으므로 허용하지 않는다.
 - 위반 시 **필드 경로만** 돌려준다. 값은 로그나 오류에 남기지 않는다.
 """
 
+import math
 from typing import Any
 
 _NUMBER = (int, float)
@@ -42,7 +44,10 @@ _GEMINI_CONTENT_KEYS = frozenset({"role", "parts"})
 
 
 def _is_number(value: Any) -> bool:
-    return isinstance(value, _NUMBER) and not isinstance(value, bool)
+    """불리언과 NaN/Infinity는 숫자 옵션으로 인정하지 않는다(int는 크기와 무관하게 허용)."""
+    if isinstance(value, bool) or not isinstance(value, _NUMBER):
+        return False
+    return isinstance(value, int) or math.isfinite(value)
 
 
 def _check_numeric_options(
@@ -65,7 +70,7 @@ def _check_numeric_options(
 
 def _check_chat_messages(messages: Any) -> list[str]:
     problems: list[str] = []
-    if not isinstance(messages, list):
+    if not isinstance(messages, list) or not messages:
         return ["messages"]
     for idx, message in enumerate(messages):
         if not isinstance(message, dict):
@@ -76,12 +81,16 @@ def _check_chat_messages(messages: Any) -> list[str]:
                 problems.append(f"messages[{idx}].{key}")
         if message.get("role", "user") not in _CHAT_ROLES:
             problems.append(f"messages[{idx}].role")
+        # 문자열이 아닌 content(블록 리스트 등)는 L2가 세그먼트로 뽑지 못한다.
+        # 파이프라인의 기존 검사에만 기대지 않도록 여기서도 막는다(이중 방어).
+        if not isinstance(message.get("content"), str):
+            problems.append(f"messages[{idx}].content")
     return problems
 
 
 def _check_gemini_contents(contents: Any) -> list[str]:
     problems: list[str] = []
-    if not isinstance(contents, list):
+    if not isinstance(contents, list) or not contents:
         return ["contents"]
     for idx, content in enumerate(contents):
         if not isinstance(content, dict):
@@ -92,6 +101,21 @@ def _check_gemini_contents(contents: Any) -> list[str]:
                 problems.append(f"contents[{idx}].{key}")
         if content.get("role", "user") not in _GEMINI_ROLES:
             problems.append(f"contents[{idx}].role")
+        # parts 안쪽도 확인한다: 각 part는 {"text": <str>} 하나뿐이어야 한다.
+        # (파이프라인에도 같은 검사가 있지만, 이 모듈만으로 허용 목록이 완결되게 한다.)
+        parts = content.get("parts")
+        if not isinstance(parts, list) or not parts:
+            problems.append(f"contents[{idx}].parts")
+            continue
+        for p_idx, part in enumerate(parts):
+            if not isinstance(part, dict):
+                problems.append(f"contents[{idx}].parts[{p_idx}]")
+                continue
+            problems.extend(
+                f"contents[{idx}].parts[{p_idx}].{key}" for key in part if key != "text"
+            )
+            if not isinstance(part.get("text"), str):
+                problems.append(f"contents[{idx}].parts[{p_idx}].text")
     return problems
 
 

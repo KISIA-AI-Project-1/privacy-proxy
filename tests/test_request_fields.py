@@ -128,6 +128,68 @@ def test_unknown_vendor_is_rejected():
     assert find_unsupported_fields("other", {"messages": []}) == ["<vendor>"]
 
 
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+@pytest.mark.parametrize("vendor", ["openai", "anthropic"])
+def test_non_finite_numbers_are_rejected(vendor, bad):
+    assert "temperature" in find_unsupported_fields(vendor, BUILDERS[vendor](temperature=bad))
+
+
+def test_non_finite_number_in_gemini_config_is_rejected():
+    body = gemini_body(generationConfig={"temperature": float("nan")})
+    assert find_unsupported_fields("gemini", body) == ["generationConfig.temperature"]
+
+
+def test_huge_integer_does_not_crash_the_check():
+    assert find_unsupported_fields("openai", openai_body(seed=10**400)) == []
+
+
+@pytest.mark.parametrize("vendor", ["openai", "anthropic"])
+@pytest.mark.parametrize(
+    "content", [[{"type": "text", "text": SYNTHETIC_PHONE}], 12345, None, {"text": "x"}]
+)
+def test_non_string_content_is_reported(vendor, content):
+    body = BUILDERS[vendor]()
+    body["messages"][0]["content"] = content
+    assert find_unsupported_fields(vendor, body) == ["messages[0].content"]
+
+
+@pytest.mark.parametrize("vendor", ["openai", "anthropic"])
+def test_empty_messages_are_reported(vendor):
+    body = BUILDERS[vendor]()
+    body["messages"] = []
+    assert find_unsupported_fields(vendor, body) == ["messages"]
+
+
+@pytest.mark.parametrize(
+    ("parts", "expected"),
+    [
+        (
+            [{"text": "안녕하세요", "unscanned_meta": SYNTHETIC_PHONE}],
+            ["contents[0].parts[0].unscanned_meta"],
+        ),
+        (
+            [{"text": "안녕하세요"}, {"inlineData": {"data": SYNTHETIC_EMAIL}}],
+            ["contents[0].parts[1].inlineData", "contents[0].parts[1].text"],
+        ),
+        ([{"text": 123}], ["contents[0].parts[0].text"]),
+        ([], ["contents[0].parts"]),
+        ("텍스트", ["contents[0].parts"]),
+        (["문자열 part"], ["contents[0].parts[0]"]),
+    ],
+)
+def test_gemini_parts_internals_are_checked(parts, expected):
+    """검수 지적: parts 안쪽을 보지 않던 빈틈. 파이프라인 기존 검사에 기대지 않고 여기서 막는다."""
+    body = gemini_body()
+    body["contents"][0]["parts"] = parts
+    assert find_unsupported_fields("gemini", body) == expected
+
+
+def test_gemini_without_contents_is_reported():
+    assert find_unsupported_fields("gemini", {"model": "gemini-1.5-pro", "contents": []}) == [
+        "contents"
+    ]
+
+
 # ----------------------------------------------------------------------- 통합: 실제 전송 본문
 
 
