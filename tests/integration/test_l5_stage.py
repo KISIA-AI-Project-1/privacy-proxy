@@ -2,6 +2,7 @@
 
 import pytest
 
+from privacy_proxy.risk.resolver import resolve_overlaps
 from privacy_proxy.risk.stage import run_l5_risk_scoring
 from privacy_proxy.schemas import DetectedPII, DetectionTier, ProxyContext
 
@@ -16,6 +17,28 @@ def detection(entity_type: str, value: str, start: int = 0) -> DetectedPII:
         tier=DetectionTier.RULE_ANCHORED,
         source="integration-fixture",
     )
+
+
+async def test_l5_passes_full_original_prompt_to_resolver(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prompt = "첫 번째 문장\n송장번호: 112412345601"
+    value = "112412345601"
+    entity = detection("TRACKING_NUMBER", value, prompt.index(value))
+    received: list[str | None] = []
+
+    def capture(entities: list[DetectedPII], *, raw_prompt: str | None = None) -> list[DetectedPII]:
+        received.append(raw_prompt)
+        assert raw_prompt is not None
+        assert raw_prompt[entities[0].start_idx : entities[0].end_idx] == value
+        return resolve_overlaps(entities, raw_prompt=raw_prompt)
+
+    monkeypatch.setattr("privacy_proxy.risk.score.resolve_overlaps", capture)
+    result = await run_l5_risk_scoring(ProxyContext(raw_prompt=prompt, detected_entities=[entity]))
+
+    assert result.status == "success"
+    assert received == [prompt]
+    assert result.detected_entities == resolve_overlaps([entity])
 
 
 @pytest.mark.asyncio
@@ -97,3 +120,124 @@ async def test_commerce_combination_runs_real_l5() -> None:
     assert result.status == "success"
     assert result.risk_score == 33
     assert result.policy_action == "GENERALIZE"
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("송장번호: 112412345601", "TRACKING_NUMBER"),
+        ("송장번호는 별도입니다. 112412345601", "KR_DRIVER_LICENSE"),
+    ],
+)
+async def test_l4_anchor_evidence_resolves_license_in_l5(text: str, expected: str) -> None:
+    from l4.recognizers import find_tracking_number
+
+    from privacy_proxy.l4_adapter import translate_segment_detection
+
+    prefix = "앞선 메시지\n"
+    [local] = find_tracking_number(text)
+    number = translate_segment_detection(local, offset_base=len(prefix))
+    license = DetectedPII(
+        entity_type="KR_DRIVER_LICENSE",
+        original_value=number.original_value,
+        start_idx=number.start_idx,
+        end_idx=number.end_idx,
+        confidence=1.0,
+        tier=DetectionTier.DETERMINISTIC,
+        source="L3_Regex",
+    )
+    result = await run_l5_risk_scoring(
+        ProxyContext(
+            raw_prompt=prefix + text,
+            detected_entities=[license, number],
+        )
+    )
+    assert result.status == "success"
+    assert [item.entity_type for item in result.detected_entities] == [expected]
+    assert result.entity_policies[0].action == "TOKENIZE"
+
+
+async def test_actual_l4_competing_labels_keep_direct_order_evidence() -> None:
+    from itertools import permutations
+
+    from l4.recognizers import find_order_id, find_tracking_number
+
+    text = "송장번호는 별도입니다. 주문번호: 112412345601"
+    [order] = find_order_id(text)
+    [tracking] = find_tracking_number(text)
+    license = DetectedPII(
+        entity_type="KR_DRIVER_LICENSE",
+        original_value=order.original_value,
+        start_idx=order.start_idx,
+        end_idx=order.end_idx,
+        confidence=1.0,
+        tier=DetectionTier.DETERMINISTIC,
+        source="L3_Regex",
+    )
+    for sequence in permutations([order, tracking, license]):
+        result = await run_l5_risk_scoring(
+            ProxyContext(
+                raw_prompt=text,
+                detected_entities=list(sequence),
+            )
+        )
+        assert result.status == "success"
+        assert result.detected_entities == [order]
+        assert result.detected_entities[0].anchor_text == "주문번호"
+        assert result.entity_policies[0].action == "TOKENIZE"
+
+
+@pytest.mark.parametrize(
+    ("kind", "label", "value"),
+    [
+        ("ORDER_ID", "주문번호", "112412345601"),
+        ("TRACKING_NUMBER", "송장번호", "112412345601"),
+        ("CUSTOMER_ID", "고객번호", "112412345601"),
+        ("ACCOUNT_NUMBER", "계좌번호", "123456-01-234567"),
+    ],
+)
+async def test_merged_l4_number_anchors_reach_l5_with_global_offsets(kind, label, value):
+    from itertools import permutations
+
+    from l4.recognizers import (
+        find_account_number,
+        find_customer_id,
+        find_order_id,
+        find_tracking_number,
+    )
+
+    from privacy_proxy.l4_adapter import translate_segment_detection
+
+    find = {
+        "ORDER_ID": find_order_id,
+        "TRACKING_NUMBER": find_tracking_number,
+        "CUSTOMER_ID": find_customer_id,
+        "ACCOUNT_NUMBER": find_account_number,
+    }[kind]
+    prefix = "이전 메시지입니다.\n"
+    segment = f"{label}: {value}"
+    [local] = find(segment, segment_id="seg-2")
+    number = translate_segment_detection(local, offset_base=len(prefix))
+    raw = prefix + segment
+    assert number.anchor_text == label
+    assert raw[number.anchor_start : number.anchor_end] == label
+    assert raw[number.start_idx : number.end_idx] == value
+    # Synthetic competing license isolates resolver behavior; this does not
+    # claim that L3 emits a license for every account-number format.
+    license = DetectedPII(
+        entity_type="KR_DRIVER_LICENSE",
+        original_value=value,
+        start_idx=number.start_idx,
+        end_idx=number.end_idx,
+        segment_id="seg-2",
+        confidence=1.0,
+        tier=DetectionTier.DETERMINISTIC,
+        source="L3_Regex",
+    )
+    for sequence in permutations([number, license]):
+        result = await run_l5_risk_scoring(
+            ProxyContext(raw_prompt=raw, detected_entities=list(sequence))
+        )
+        assert result.status == "success"
+        assert result.detected_entities == [number]
+        assert result.entity_policies[0].action == "TOKENIZE"

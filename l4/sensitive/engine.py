@@ -28,6 +28,7 @@ _WINDOW = 25
 # 프레임 이름 → (리터럴 목록, 창). stage/doc 외 이름은 용어 주변 창 안 어디서든.
 _CONSUME = ("복용중", "복용하고", "복용했", "먹고있", "먹는중", "먹었")
 _MEDICATE = ("맞았", "발랐", "바르고", "처방받")
+_EXAM = ("확진", "검사받", "진료받", "시술받")
 _SYMPTOM = ("생겼", "나타났", "의심", "가려워", "가렵", "아파요", "아파서", "아팠")
 _EVENT = ("찢어", "터져", "실패", "깜빡", "못먹")
 _FRAMES: dict[str, tuple[tuple[str, ...], int]] = {
@@ -55,6 +56,7 @@ _FRAMES: dict[str, tuple[tuple[str, ...], int]] = {
             *_CONSUME,
             *_MEDICATE,
             *_SYMPTOM,
+            *_EXAM,
             *_EVENT,
         ),
         _WINDOW,

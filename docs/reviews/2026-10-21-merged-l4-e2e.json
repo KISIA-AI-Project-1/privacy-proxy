@@ -1,0 +1,488 @@
+{
+  "scope": "all",
+  "chunk_size": 3,
+  "results": [
+    {
+      "case": "plain",
+      "scope": "proxy",
+      "http": 200,
+      "status": "PASS",
+      "leaked_values": [],
+      "missing_entities": [],
+      "failures": [],
+      "detected_types": [],
+      "latency_ms": {
+        "L3": 19.78,
+        "L4": 0.328,
+        "L5": 0.417,
+        "L6": 0.057,
+        "L7_stream": 1.128,
+        "L8_processing": 0.0,
+        "ttft": 24.56,
+        "total_pipeline": 24.66
+      }
+    },
+    {
+      "case": "phone",
+      "scope": "proxy",
+      "http": 200,
+      "status": "PASS",
+      "leaked_values": [],
+      "missing_entities": [],
+      "failures": [],
+      "detected_types": [
+        "PHONE_NUMBER"
+      ],
+      "latency_ms": {
+        "L3": 23.211,
+        "L4": 129.344,
+        "L5": 0.122,
+        "L6": 0.991,
+        "L8_processing": 0.033,
+        "L7_stream": 0.749,
+        "ttft": 154.48,
+        "total_pipeline": 154.58
+      }
+    },
+    {
+      "case": "repeat_phone",
+      "scope": "proxy",
+      "http": 200,
+      "status": "PASS",
+      "leaked_values": [],
+      "missing_entities": [],
+      "failures": [],
+      "detected_types": [
+        "PHONE_NUMBER"
+      ],
+      "latency_ms": {
+        "L3": 24.207,
+        "L4": 1.305,
+        "L5": 0.109,
+        "L6": 0.211,
+        "L8_processing": 0.04,
+        "L7_stream": 0.677,
+        "ttft": 26.51,
+        "total_pipeline": 26.65
+      }
+    },
+    {
+      "case": "email",
+      "scope": "proxy",
+      "http": 200,
+      "status": "PASS",
+      "leaked_values": [],
+      "missing_entities": [],
+      "failures": [],
+      "detected_types": [
+        "EMAIL_ADDRESS"
+      ],
+      "latency_ms": {
+        "L3": 19.524,
+        "L4": 0.161,
+        "L5": 0.082,
+        "L6": 0.172,
+        "L8_processing": 0.021,
+        "L7_stream": 0.647,
+        "ttft": 20.63,
+        "total_pipeline": 20.72
+      }
+    },
+    {
+      "case": "account_1",
+      "scope": "proxy",
+      "http": 200,
+      "status": "PASS",
+      "leaked_values": [],
+      "missing_entities": [],
+      "failures": [],
+      "detected_types": [
+        "ACCOUNT_NUMBER"
+      ],
+      "latency_ms": {
+        "L3": 19.317,
+        "L4": 1.607,
+        "L5": 0.104,
+        "L6": 0.182,
+        "L8_processing": 0.035,
+        "L7_stream": 0.819,
+        "ttft": 22.06,
+        "total_pipeline": 22.19
+      }
+    },
+    {
+      "case": "account_2",
+      "scope": "proxy",
+      "http": 200,
+      "status": "PASS",
+      "leaked_values": [],
+      "missing_entities": [],
+      "failures": [],
+      "detected_types": [
+        "ACCOUNT_NUMBER"
+      ],
+      "latency_ms": {
+        "L3": 18.301,
+        "L4": 1.197,
+        "L5": 0.09,
+        "L6": 0.169,
+        "L8_processing": 0.028,
+        "L7_stream": 0.681,
+        "ttft": 20.47,
+        "total_pipeline": 20.57
+      }
+    },
+    {
+      "case": "detail_tokenize",
+      "scope": "proxy",
+      "http": 200,
+      "status": "PASS",
+      "leaked_values": [],
+      "missing_entities": [],
+      "failures": [],
+      "detected_types": [
+        "ADDRESS_DETAIL",
+        "PHONE_NUMBER"
+      ],
+      "latency_ms": {
+        "L3": 20.283,
+        "L4": 1.226,
+        "L5": 0.092,
+        "L6": 0.255,
+        "L8_processing": 0.046,
+        "L7_stream": 0.675,
+        "ttft": 22.53,
+        "total_pipeline": 22.68
+      }
+    },
+    {
+      "case": "road_tokenize",
+      "scope": "proxy",
+      "http": 200,
+      "status": "PASS",
+      "leaked_values": [],
+      "missing_entities": [],
+      "failures": [],
+      "detected_types": [
+        "ADDRESS_ROAD",
+        "PHONE_NUMBER"
+      ],
+      "latency_ms": {
+        "L3": 18.717,
+        "L4": 1.096,
+        "L5": 0.087,
+        "L6": 0.21,
+        "L8_processing": 0.04,
+        "L7_stream": 0.629,
+        "ttft": 20.72,
+        "total_pipeline": 20.85
+      }
+    },
+    {
+      "case": "health",
+      "scope": "proxy",
+      "http": 200,
+      "status": "PASS",
+      "leaked_values": [],
+      "missing_entities": [],
+      "failures": [],
+      "detected_types": [
+        "SENSITIVE_HEALTH"
+      ],
+      "latency_ms": {
+        "L3": 14.029,
+        "L4": 0.44,
+        "L5": 0.082,
+        "L6": 0.157,
+        "L8_processing": 0.027,
+        "L7_stream": 0.631,
+        "ttft": 15.35,
+        "total_pipeline": 15.46
+      }
+    },
+    {
+      "case": "product_generalized_low_risk",
+      "scope": "proxy",
+      "http": 200,
+      "status": "PASS",
+      "leaked_values": [],
+      "missing_entities": [],
+      "failures": [],
+      "detected_types": [
+        "PRODUCT_ITEM",
+        "PURCHASE_PATTERN"
+      ],
+      "latency_ms": {
+        "L3": 13.798,
+        "L4": 0.296,
+        "L5": 0.102,
+        "L6": 0.065,
+        "L7_stream": 0.578,
+        "L8_processing": 0.0,
+        "ttft": 14.9,
+        "total_pipeline": 14.96
+      }
+    },
+    {
+      "case": "age_kept_with_phone",
+      "scope": "proxy",
+      "http": 200,
+      "status": "PASS",
+      "leaked_values": [],
+      "missing_entities": [],
+      "failures": [],
+      "detected_types": [
+        "AGE_GROUP",
+        "PHONE_NUMBER"
+      ],
+      "latency_ms": {
+        "L3": 18.363,
+        "L4": 1.071,
+        "L5": 0.1,
+        "L6": 0.168,
+        "L8_processing": 0.031,
+        "L7_stream": 0.582,
+        "ttft": 20.3,
+        "total_pipeline": 20.41
+      }
+    },
+    {
+      "case": "purchase_protected_with_generalized_qis",
+      "scope": "proxy",
+      "http": 200,
+      "status": "PASS",
+      "leaked_values": [],
+      "missing_entities": [],
+      "failures": [],
+      "detected_types": [
+        "AGE",
+        "LOCATION",
+        "PHONE_NUMBER",
+        "PRODUCT_ITEM",
+        "PURCHASE_PATTERN"
+      ],
+      "latency_ms": {
+        "L3": 22.183,
+        "L4": 1.355,
+        "L5": 0.153,
+        "L6": 0.257,
+        "L8_processing": 0.07,
+        "L7_stream": 0.736,
+        "ttft": 24.59,
+        "total_pipeline": 24.8
+      }
+    },
+    {
+      "case": "name_1",
+      "scope": "team",
+      "http": 200,
+      "status": "LEAK",
+      "leaked_values": [
+        "김서연"
+      ],
+      "missing_entities": [
+        "PERSON_KO"
+      ],
+      "failures": [],
+      "detected_types": [],
+      "latency_ms": {
+        "L3": 13.701,
+        "L4": 0.098,
+        "L5": 0.048,
+        "L6": 0.02,
+        "L7_stream": 0.559,
+        "L8_processing": 0.0,
+        "ttft": 14.49,
+        "total_pipeline": 14.55
+      }
+    },
+    {
+      "case": "name_2",
+      "scope": "team",
+      "http": 200,
+      "status": "LEAK",
+      "leaked_values": [
+        "최영수"
+      ],
+      "missing_entities": [
+        "PERSON_KO"
+      ],
+      "failures": [],
+      "detected_types": [],
+      "latency_ms": {
+        "L3": 13.807,
+        "L4": 0.094,
+        "L5": 0.053,
+        "L6": 0.022,
+        "L7_stream": 0.629,
+        "L8_processing": 0.0,
+        "ttft": 14.68,
+        "total_pipeline": 14.74
+      }
+    },
+    {
+      "case": "name_3",
+      "scope": "team",
+      "http": 200,
+      "status": "LEAK",
+      "leaked_values": [
+        "김민지"
+      ],
+      "missing_entities": [
+        "PERSON_KO"
+      ],
+      "failures": [],
+      "detected_types": [],
+      "latency_ms": {
+        "L3": 14.092,
+        "L4": 0.099,
+        "L5": 0.048,
+        "L6": 0.02,
+        "L7_stream": 0.578,
+        "L8_processing": 0.0,
+        "ttft": 14.89,
+        "total_pipeline": 14.96
+      }
+    },
+    {
+      "case": "customs",
+      "scope": "team",
+      "http": 200,
+      "status": "PASS",
+      "leaked_values": [],
+      "missing_entities": [],
+      "failures": [],
+      "detected_types": [
+        "CUSTOMS_CLEARANCE_ID"
+      ],
+      "latency_ms": {
+        "L3": 14.669,
+        "L4": 0.99,
+        "L5": 0.077,
+        "L6": 0.149,
+        "L8_processing": 0.022,
+        "L7_stream": 0.584,
+        "ttft": 16.51,
+        "total_pipeline": 16.59
+      }
+    },
+    {
+      "case": "order_type",
+      "scope": "team",
+      "http": 200,
+      "status": "PASS",
+      "leaked_values": [],
+      "missing_entities": [],
+      "failures": [],
+      "detected_types": [
+        "ORDER_ID"
+      ],
+      "latency_ms": {
+        "L3": 15.297,
+        "L4": 1.265,
+        "L5": 0.101,
+        "L6": 0.192,
+        "L8_processing": 0.025,
+        "L7_stream": 0.729,
+        "ttft": 17.64,
+        "total_pipeline": 17.73
+      }
+    },
+    {
+      "case": "tracking_type",
+      "scope": "team",
+      "http": 200,
+      "status": "PASS",
+      "leaked_values": [],
+      "missing_entities": [],
+      "failures": [],
+      "detected_types": [
+        "TRACKING_NUMBER"
+      ],
+      "latency_ms": {
+        "L3": 15.315,
+        "L4": 1.15,
+        "L5": 0.088,
+        "L6": 0.17,
+        "L8_processing": 0.026,
+        "L7_stream": 0.799,
+        "ttft": 17.56,
+        "total_pipeline": 17.66
+      }
+    },
+    {
+      "case": "detail_address_protection",
+      "scope": "team",
+      "http": 200,
+      "status": "PASS",
+      "leaked_values": [],
+      "missing_entities": [],
+      "failures": [],
+      "detected_types": [
+        "ADDRESS_DETAIL"
+      ],
+      "latency_ms": {
+        "L3": 14.935,
+        "L4": 1.145,
+        "L5": 0.087,
+        "L6": 0.182,
+        "L8_processing": 0.029,
+        "L7_stream": 0.722,
+        "ttft": 17.09,
+        "total_pipeline": 17.21
+      }
+    },
+    {
+      "case": "age_1",
+      "scope": "team",
+      "http": 200,
+      "status": "PASS",
+      "leaked_values": [],
+      "missing_entities": [],
+      "failures": [],
+      "detected_types": [
+        "AGE_GROUP"
+      ],
+      "latency_ms": {
+        "L3": 14.335,
+        "L4": 0.086,
+        "L5": 0.075,
+        "L6": 0.039,
+        "L7_stream": 0.529,
+        "L8_processing": 0.0,
+        "ttft": 15.13,
+        "total_pipeline": 15.19
+      }
+    },
+    {
+      "case": "age_2",
+      "scope": "team",
+      "http": 200,
+      "status": "PASS",
+      "leaked_values": [],
+      "missing_entities": [],
+      "failures": [],
+      "detected_types": [
+        "AGE_GROUP"
+      ],
+      "latency_ms": {
+        "L3": 13.233,
+        "L4": 0.091,
+        "L5": 0.098,
+        "L6": 0.055,
+        "L7_stream": 0.66,
+        "L8_processing": 0.0,
+        "ttft": 14.21,
+        "total_pipeline": 14.27
+      }
+    }
+  ],
+  "security": {
+    "unauthenticated_http": 401,
+    "upload_log_http": 404
+  },
+  "readiness_http": 200,
+  "passed": 18,
+  "failed": 3,
+  "status": "FAIL"
+}

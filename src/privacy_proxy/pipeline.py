@@ -18,7 +18,9 @@ from redis import Redis
 from audit.logger import audit_log_l9
 from privacy_proxy.adapters import AdapterRouter
 from privacy_proxy.config import get_settings
+from privacy_proxy.l4_adapter import translate_segment_detection
 from privacy_proxy.l4_ner import detect_l4_ner
+from privacy_proxy.request_fields import find_unsupported_fields
 from privacy_proxy.risk import run_l5_risk_scoring
 from privacy_proxy.schemas import (
     DetectedPII,
@@ -97,17 +99,25 @@ def _to_detected_pii(
     det: Any,
     offset_base: int,
 ) -> DetectedPII:
-    """입력 문자열 기준 탐지 위치를 전체 원문 기준으로 변환한다."""
-    return DetectedPII(
+    """탐지 결과를 공통 스키마로 만들고 전체 원문 좌표로 변환한다."""
+    local_detection = DetectedPII(
         segment_id=det.segment_id,
-        start_idx=det.start_idx + offset_base,
-        end_idx=det.end_idx + offset_base,
+        start_idx=det.start_idx,
+        end_idx=det.end_idx,
         entity_type=det.entity_type,
         confidence=det.confidence,
         source=det.source,
         tier=det.tier,
         original_value=det.original_value,
         normalized=det.normalized,
+        anchor_text=getattr(det, "anchor_text", None),
+        anchor_start=getattr(det, "anchor_start", None),
+        anchor_end=getattr(det, "anchor_end", None),
+    )
+
+    return translate_segment_detection(
+        local_detection,
+        offset_base=offset_base,
     )
 
 
@@ -200,6 +210,13 @@ async def run_privacy_pipeline(
     except Exception:
         context.status = "failed"
         context.error = "L2_PARSING_FAILED"
+        return await audit_log_l9(context)
+
+    # 세그먼트로 추출하지 않는 필드(user, metadata, message.name 등)는 탐지 경로가 없다.
+    # 허용 목록 밖의 필드가 있으면 외부로 보내지 않는다. 필드 경로·값은 오류에 담지 않는다.
+    if find_unsupported_fields(parsed.vendor, body):
+        context.status = "failed"
+        context.error = "L2_UNSUPPORTED_FIELD"
         return await audit_log_l9(context)
 
     # [L1 인가] 요청 모델의 사용 권한 확인

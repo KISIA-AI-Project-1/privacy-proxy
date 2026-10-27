@@ -22,7 +22,7 @@ from privacy_proxy.schemas import DetectedPII, DetectionTier
 
 ENTITY = "LOCATION"
 PRIVATE = "SYNTHETIC_LOCATION_DEPENDENCY_ERROR"
-FIELDS = (
+CORE_FIELDS = (
     "segment_id",
     "start_idx",
     "end_idx",
@@ -33,6 +33,14 @@ FIELDS = (
     "original_value",
     "normalized",
 )
+
+ANCHOR_FIELDS = (
+    "anchor_text",
+    "anchor_start",
+    "anchor_end",
+)
+
+FIELDS = CORE_FIELDS + ANCHOR_FIELDS
 REJECTIONS = [
     pytest.param("경기도수원시영통구", id="R03-three-level"),
     pytest.param("수원시영통구", id="R03-two-level"),

@@ -80,7 +80,7 @@ class ParsedRequest(BaseModel):
 
 
 class DetectedPII(BaseModel):
-    """Canonical nine-field L3/L4 detection contract.
+    """Canonical L3/L4 detection contract with optional anchor evidence.
 
     ``start_idx`` and ``end_idx`` are zero-based, half-open offsets into the
     shared ``ProxyContext.raw_prompt``.
@@ -100,7 +100,7 @@ class DetectedPII(BaseModel):
         hide_input_in_errors=True,
     )
 
-    # Canonical nine-field order.
+    # Core detection fields.
     segment_id: str = "seg-1"
     start_idx: int = Field(ge=0)
     end_idx: int = Field(gt=0)
@@ -113,6 +113,9 @@ class DetectedPII(BaseModel):
     tier: DetectionTier
     original_value: str = Field(min_length=1)
     normalized: str = ""
+    anchor_text: str | None = Field(default=None, min_length=1)
+    anchor_start: int | None = Field(default=None, ge=0)
+    anchor_end: int | None = Field(default=None, gt=0)
 
     @property
     def layer(self) -> str:
@@ -123,6 +126,23 @@ class DetectedPII(BaseModel):
     def validate_span(self) -> "DetectedPII":
         if self.end_idx <= self.start_idx:
             raise ValueError("invalid detected entity span")
+
+        anchor_values = (
+            self.anchor_text,
+            self.anchor_start,
+            self.anchor_end,
+        )
+
+        if any(value is not None for value in anchor_values):
+            if self.anchor_text is None or self.anchor_start is None or self.anchor_end is None:
+                raise ValueError("anchor evidence must include text, start and end")
+
+            if self.anchor_end <= self.anchor_start:
+                raise ValueError("invalid anchor span")
+
+            if self.anchor_end - self.anchor_start != len(self.anchor_text):
+                raise ValueError("anchor text length does not match span")
+
         return self
 
 
