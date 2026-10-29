@@ -36,6 +36,11 @@ def _group(entity: DetectedPII) -> tuple[str, str, DetectionTier]:
 
 _MAX_DIRECT_ANCHOR_GAP = 6
 _LICENSE_COMPETITORS = {"ORDER_ID", "TRACKING_NUMBER", "CUSTOMER_ID", "ACCOUNT_NUMBER"}
+_PASSPORT_OVERRIDE_ANCHORS = {
+    "CUSTOMER_ID": {"고객번호", "고객 번호", "회원번호", "회원 번호"},
+    "ORDER_ID": {"주문번호", "주문 번호", "구매번호", "구매 번호"},
+    "TRACKING_NUMBER": {"운송장번호", "송장번호", "송장 번호", "택배번호", "배송번호"},
+}
 # A label and a value may be separated by horizontal whitespace, one particle,
 # and label punctuation. Sentences, newlines and arbitrary words are not links.
 _LEFT_LINK = re.compile(r"[ \t]*(?:은|는|이|가|의)?[ \t]*[:\uFF1A=]?[ \t]*")
@@ -73,6 +78,8 @@ def resolve_overlaps(
     raw_prompt is the full original text in the entities' global coordinate
     system. A directly anchored L4 number can outrank a same-span license
     detection. Missing or indirect evidence preserves tier-first resolution.
+    For same-span RULE_ANCHORED passports, only explicit number labels and
+    one unambiguous L4 number type enable a separate passport exception.
     Direct anchor evidence precedes confidence within a producer/type group.
     Otherwise indistinguishable candidates with uncomparable, conflicting
     confidence fail closed; producer scores are never rewritten.
@@ -134,6 +141,28 @@ def resolve_overlaps(
                     and not direct_number(entity)
                 )
             )
+        )
+    ]
+
+    def passport_override_number(entity: DetectedPII) -> bool:
+        return direct_number(entity) and entity.anchor_text in _PASSPORT_OVERRIDE_ANCHORS.get(
+            str(entity.entity_type), set()
+        )
+
+    override_types_by_span: dict[tuple[str, int, int], set[str]] = {}
+    for entity in candidates:
+        if passport_override_number(entity):
+            override_types_by_span.setdefault(span(entity), set()).add(str(entity.entity_type))
+
+    # Broad labels do not establish ownership of a passport-shaped value.
+    # Multiple explicit number types retain the existing resolution policy.
+    candidates = [
+        entity
+        for entity in candidates
+        if not (
+            entity.entity_type == "KR_PASSPORT"
+            and entity.tier == DetectionTier.RULE_ANCHORED
+            and len(override_types_by_span.get(span(entity), set())) == 1
         )
     ]
     winners: list[DetectedPII] = []
