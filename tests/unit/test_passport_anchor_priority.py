@@ -5,7 +5,7 @@ from itertools import permutations
 
 import pytest
 
-from privacy_proxy.risk.resolver import resolve_overlaps
+from privacy_proxy.risk.resolver import has_direct_anchor, resolve_overlaps
 from privacy_proxy.risk.stage import run_l5_risk_scoring
 from privacy_proxy.schemas import DetectedPII, DetectionTier, ProxyContext
 
@@ -101,6 +101,16 @@ def test_invalid_number_evidence_does_not_override(updates: dict) -> None:
 def test_missing_prompt_keeps_passport() -> None:
     number, passport = candidates("고객번호 M12345678", "고객번호")
     assert resolve_overlaps([number, passport]) == [passport]
+
+
+@pytest.mark.parametrize("gap", [" ", "은 ", "는 ", ""])
+def test_suffix_customer_label_does_not_override_passport(gap: str) -> None:
+    text = f"M12345678{gap}고객번호"
+    number, passport = candidates(text, "고객번호")
+    # The shared anchor helper still accepts suffix labels for other rules.
+    assert has_direct_anchor(number, text)
+    for sequence in permutations([number, passport]):
+        assert resolve_overlaps(list(sequence), raw_prompt=text) == [passport]
 
 
 def test_deterministic_passport_is_preserved() -> None:

@@ -78,7 +78,7 @@ def resolve_overlaps(
     raw_prompt is the full original text in the entities' global coordinate
     system. A directly anchored L4 number can outrank a same-span license
     detection. Missing or indirect evidence preserves tier-first resolution.
-    For same-span RULE_ANCHORED passports, only explicit number labels and
+    For same-span RULE_ANCHORED passports, only preceding explicit number labels and
     one unambiguous L4 number type enable a separate passport exception.
     Direct anchor evidence precedes confidence within a producer/type group.
     Otherwise indistinguishable candidates with uncomparable, conflicting
@@ -145,8 +145,13 @@ def resolve_overlaps(
     ]
 
     def passport_override_number(entity: DetectedPII) -> bool:
-        return direct_number(entity) and entity.anchor_text in _PASSPORT_OVERRIDE_ANCHORS.get(
-            str(entity.entity_type), set()
+        # A following label may introduce the next value, not describe this one.
+        # Keep suffix support in the shared helper and the license exception.
+        return (
+            direct_number(entity)
+            and entity.anchor_end is not None
+            and entity.anchor_end <= entity.start_idx
+            and entity.anchor_text in _PASSPORT_OVERRIDE_ANCHORS.get(str(entity.entity_type), set())
         )
 
     override_types_by_span: dict[tuple[str, int, int], set[str]] = {}
