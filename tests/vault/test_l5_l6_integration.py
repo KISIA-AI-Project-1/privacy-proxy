@@ -164,3 +164,34 @@ def test_l5_result_contains_entity_policies(tokenizer):
     assert len(context.entity_policies) == 2
 
     assert all(policy.action == "TOKENIZE" for policy in context.entity_policies)
+
+
+@pytest.mark.parametrize(
+    ("entity_type", "value"),
+    [
+        ("KR_PASSPORT", "M12345678"),
+        ("CUSTOMER_ID", "CUST-12345"),
+        ("TRACKING_NUMBER", "123456789012"),
+    ],
+)
+def test_l5_service_identifiers_tokenize_in_l6(tokenizer, entity_type, value):
+    """여권번호와 서비스 식별자는 L5 TOKENIZE 정책에 따라 L6에서 가역 토큰화한다."""
+    prompt = f"고객 식별 정보는 {value}입니다."
+    entity = make_entity(prompt, value, entity_type)
+
+    context, result, _ = run_l5_l6(tokenizer, prompt, [entity])
+
+    # L5가 해당 엔티티에 TOKENIZE를 지정했는지 확인
+    policy = next(p for p in context.entity_policies if p.entity_type == entity_type)
+    assert policy.action == "TOKENIZE"
+
+    # L6에서 원문이 제거되고 토큰으로 치환됐는지 확인
+    assert result.anonymized_prompt != prompt
+    assert value not in result.anonymized_prompt
+
+    action = next(a for a in result.entity_actions if a.entity_type == entity_type)
+    assert action.action == EntityActionKind.TOKENIZE
+
+    # Vault에 저장된 토큰으로 원문 복원이 가능한지 확인
+    pseudonym = next(token for token, original in result.vault_mapping.items() if original == value)
+    assert tokenizer.reveal(context.session_id, pseudonym) == value

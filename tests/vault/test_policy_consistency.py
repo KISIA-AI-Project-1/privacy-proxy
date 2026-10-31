@@ -1,19 +1,12 @@
 """L6 정책 일관성·왕복 복원 테스트.
 
-실행:  pytest tests/test_l6_policy_consistency.py -v
-(프로젝트 루트에서. import 경로가 다르면 맨 위 import 3줄만 고치세요.)
+실행:
+    uv run pytest tests/vault/test_policy_consistency.py -v
 
-L5 연동 테스트(마지막 섹션)는 환경변수 L5_MODULE 을 지정해야 돈다.
-  예) L5_MODULE=privacy_proxy.risk.scoring pytest tests/test_l6_policy_consistency.py -v -k l5
-  (assess_risk 가 들어있는 모듈 경로)
-
-xfail 로 표시된 테스트는 '현재 코드의 알려진 갭'이다. 고치면 XPASS 로 바뀐다.
 """
 
 from __future__ import annotations
 
-import importlib
-import os
 import threading
 from dataclasses import dataclass
 
@@ -358,12 +351,13 @@ def test_unsupported_type_is_reported_when_not_strict():
     assert "1234-5678-9012-3456" in res.anonymized_prompt
 
 
-def test_policy_key_miss_falls_back_to_request_level():
-    """현재 동작 기록: 항목별 정책 키가 안 맞으면 예외 없이 요청 단위 정책으로 폴백한다."""
+def test_policy_key_miss_raises_error():
+    """항목별 정책 키가 누락되면 요청 단위 정책으로 폴백하지 않고 예외를 발생시킨다."""
     p = "34세 고객"
     e = span(p, "34세", "AGE")
     ok = {("seg-1", e.start_idx, e.end_idx): "GENERALIZE"}
     miss = {("seg-2", e.start_idx, e.end_idx): "GENERALIZE"}
+
     tk, _ = make_tokenizer()
     r_ok = tk.anonymize(
         session_id=SID,
@@ -372,16 +366,17 @@ def test_policy_key_miss_falls_back_to_request_level():
         policy_action="TOKENIZE",
         entity_policies=ok,
     )
-    tk2, _ = make_tokenizer()
-    r_miss = tk2.anonymize(
-        session_id=SID,
-        raw_prompt=p,
-        detected_entities=[e],
-        policy_action="TOKENIZE",
-        entity_policies=miss,
-    )
     assert r_ok.anonymized_prompt.startswith("30대")
-    assert r_miss.anonymized_prompt.startswith("【AGE_1】")  # L5 의도(GENERALIZE)와 다름
+
+    tk2, _ = make_tokenizer()
+    with pytest.raises(ValueError, match="L5 entity policy missing"):
+        tk2.anonymize(
+            session_id=SID,
+            raw_prompt=p,
+            detected_entities=[e],
+            policy_action="TOKENIZE",
+            entity_policies=miss,
+        )
 
 
 def test_product_not_leaked_when_policy_key_missing():
@@ -476,50 +471,3 @@ def test_l5_supported_types_are_known_to_l6():
     mod = pytest.importorskip("privacy_proxy.risk.entity_contract")
     unknown = sorted(t for t in mod.L5_SUPPORTED_ENTITY_TYPES if not is_known(t))
     assert unknown == [], f"L6 가 모르는 L5 타입: {unknown}"
-
-
-# ----------------------------------------------------------------- L5 연동 (환경변수 L5_MODULE 필요)
-L5_MODULE = os.getenv("L5_MODULE")
-
-
-@pytest.mark.skipif(not L5_MODULE, reason="L5_MODULE=<assess_risk 가 있는 모듈 경로> 를 지정하세요")
-@pytest.mark.parametrize(
-    "etype,value",
-    [
-        ("KR_PASSPORT", "M12345678"),
-        ("CUSTOMER_ID", "C-000123"),
-        ("TRACKING_NUMBER", "1234567890123"),
-    ],
-)
-def test_l5_to_l6_end_to_end_service_identifiers(etype, value):
-    """L5 가 TOKENIZE 를 내리고 L6 도 TOKENIZE 로 처리하는지 실제 L5 로 확인."""
-    assess_risk = importlib.import_module(L5_MODULE).assess_risk
-    schemas = importlib.import_module("privacy_proxy.schemas")
-    prompt = f"문의 {value} 확인 부탁드려요"
-    i = prompt.index(value)
-    try:
-        pii = schemas.DetectedPII(
-            segment_id="seg-1",
-            start_idx=i,
-            end_idx=i + len(value),
-            entity_type=etype,
-            original_value=value,
-            confidence=0.99,
-            tier=schemas.DetectionTier.DETERMINISTIC,
-        )
-        ctx = schemas.ProxyContext(raw_prompt=prompt, detected_entities=[pii])
-    except TypeError as e:  # 스키마 필드가 다르면 여기만 맞춰 주세요
-        pytest.skip(f"DetectedPII/ProxyContext 생성자를 프로젝트에 맞게 수정 필요: {e}")
-    ctx = assess_risk(ctx)
-    l5 = {(p.segment_id, p.start_idx, p.end_idx): p.action for p in ctx.entity_policies}
-    assert list(l5.values()) == ["TOKENIZE"], f"L5 판정: {ctx.entity_policies}"
-    tk, _ = make_tokenizer(strict=True)
-    res = tk.anonymize(
-        session_id=SID,
-        raw_prompt=prompt,
-        detected_entities=ctx.detected_entities,
-        policy_action=ctx.policy_action,
-        entity_policies=l5,
-    )
-    assert check_l5_l6(l5, res) == []
-    assert value not in res.anonymized_prompt
