@@ -5,7 +5,7 @@ from privacy_proxy.schemas import DetectedPII
 from .analyzer_factory import build_analyzer
 from .detection_adapter import adapt_result
 from .registry import DEFAULT_ENTITIES, SUPPORTED_ENTITIES, validate_registry
-from .timeout_guard import L3DependencyTimeoutError, protect_patterns
+from .timeout_guard import L3DependencyTimeoutError, protect_number_validators, protect_patterns
 
 
 class UnsupportedCapabilityError(ValueError):
@@ -21,6 +21,7 @@ class L3AnalyzerService:
         try:
             self._analyzer = build_analyzer()
             protect_patterns(self._analyzer.registry)
+            protect_number_validators(self._analyzer.registry)
         except Exception:
             raise L3RuntimeError("ANALYZER_INITIALIZATION_FAILED") from None
 
