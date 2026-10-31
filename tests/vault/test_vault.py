@@ -71,11 +71,13 @@ class TestPolicyTable:
             assert resolve_spec("PHONE_NUMBER", policy) is not None
             assert resolve_spec("SENSITIVE_HEALTH", policy) is not None
 
-    def test_product_item_only_protected_when_l5_asks(self) -> None:
-        assert resolve_spec("PRODUCT_ITEM", "ALLOW") is None
-        assert resolve_spec("PRODUCT_ITEM", None) is None
-        assert resolve_spec("PRODUCT_ITEM", "TOKENIZE") is not None
-        assert resolve_spec("PRODUCT_ITEM", "GENERALIZE") is not None
+    @pytest.mark.parametrize(
+        "policy",
+        ["TOKENIZE", "GENERALIZE", "ALLOW", None, "UNKNOWN"],
+    )
+    def test_product_item_always_generalized(self, policy: str | None) -> None:
+        assert resolve_spec("PRODUCT_ITEM", policy) is not None
+        assert resolve_spec("PRODUCT_ITEM", policy) == POLICY_SPECS["PRODUCT_ITEM"]["*"]
 
 
 # ---------------------------------------------------------------- PURCHASE_PATTERN 통과
@@ -135,22 +137,22 @@ class TestBasicTokenization:
         assert result.anonymized_prompt == "저 홍길동인데요"
         assert tok.reveal(SID, "홍길동") == "김철수"
 
-    def test_product_item_depends_on_policy(self, tok: Tokenizer) -> None:
+    def test_product_item_always_generalized(self, tok: Tokenizer) -> None:
         prompt = "프로페시아 샀어요"
         det = make_det(prompt, "프로페시아", "PRODUCT_ITEM")
 
-        allowed = tok.anonymize(
-            session_id=SID, raw_prompt=prompt, detected_entities=[det], policy_action="ALLOW"
-        )
-        assert allowed.anonymized_prompt == prompt
-        assert allowed.entity_actions[0].action is EntityActionKind.KEEP
+        for policy in ("ALLOW", "TOKENIZE", "GENERALIZE", None):
+            result = tok.anonymize(
+                session_id=SID,
+                raw_prompt=prompt,
+                detected_entities=[det],
+                policy_action=policy,
+            )
 
-        protected = tok.anonymize(
-            session_id=SID, raw_prompt=prompt, detected_entities=[det], policy_action="TOKENIZE"
-        )
-        assert protected.anonymized_prompt == "상품 샀어요"
-        assert protected.vault_mapping == {}
-        assert protected.entity_actions[0].action is EntityActionKind.GENERALIZE
+            assert result.anonymized_prompt == "상품 샀어요"
+            assert result.vault_mapping == {}
+            assert result.token_types == {}
+            assert result.entity_actions[0].action is EntityActionKind.GENERALIZE
 
 
 # ---------------------------------------------------------------- 주소 / 일반화
@@ -331,17 +333,18 @@ class TestEntityPolicies:
         )
         assert result.anonymized_prompt == "30대이고 연락처는 【PHONE_1】 입니다"
 
-    def test_missing_key_falls_back_to_request_policy(self, tok: Tokenizer) -> None:
+    def test_missing_key_raises_error(self, tok: Tokenizer) -> None:
         prompt = "30대입니다"
         age = make_det(prompt, "30대", "AGE_GROUP")
-        result = tok.anonymize(
-            session_id=SID,
-            raw_prompt=prompt,
-            detected_entities=[age],
-            policy_action="TOKENIZE",
-            entity_policies={},  # 키 없음
-        )
-        assert result.anonymized_prompt == "【AGE_GROUP_1】입니다"
+
+        with pytest.raises(ValueError, match="L5 entity policy missing"):
+            tok.anonymize(
+                session_id=SID,
+                raw_prompt=prompt,
+                detected_entities=[age],
+                policy_action="TOKENIZE",
+                entity_policies={},  # 키 없음
+            )
 
     def test_direct_identifier_ignores_entity_policy(self, tok: Tokenizer) -> None:
         prompt = "번호 010-1234-5678"
