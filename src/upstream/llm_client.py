@@ -88,14 +88,28 @@ async def call_gemini_l7(context: ProxyContext) -> ProxyContext:
             context.error = "L7_API_KEY_MISSING"
             return context
 
-        _inject_system_prompt(vendor, body)
+        claude_api_format = "anthropic"
+        if vendor == "anthropic":
+            claude_api_format = os.getenv("CLAUDE_API_FORMAT", "anthropic").strip().lower()
+            if claude_api_format not in {"anthropic", "openai"}:
+                raise ValueError("unsupported Claude API format")
+
+        transport_vendor = (
+            "openai" if vendor == "anthropic" and claude_api_format == "openai" else vendor
+        )
+        _inject_system_prompt(transport_vendor, body)
 
         source: AsyncIterable[str]
 
         if vendor == "openai":
             source = _stream_openai(body, api_key, context)
         elif vendor == "anthropic":
-            source = _stream_claude(body, api_key, context)
+            if claude_api_format == "openai":
+                source = _stream_openai(
+                    body, api_key, context, api_url=_claude_chat_completions_url()
+                )
+            else:
+                source = _stream_claude(body, api_key, context)
         else:
             source = _stream_gemini(body, api_key, context)
 
@@ -207,6 +221,8 @@ async def _stream_openai(
     body: dict[str, Any],
     api_key: str,
     context: ProxyContext | None = None,
+    *,
+    api_url: str = "https://api.openai.com/v1/chat/completions",
 ) -> AsyncGenerator[str, None]:
     """OpenAI 응답에서 텍스트 청크를 읽는다."""
     headers = {
@@ -220,7 +236,7 @@ async def _stream_openai(
         httpx.AsyncClient(timeout=30.0) as client,
         client.stream(
             "POST",
-            "https://api.openai.com/v1/chat/completions",
+            api_url,
             headers=headers,
             json=body,
         ) as response,
@@ -245,6 +261,33 @@ async def _stream_openai(
                 yield text
 
 
+def _claude_endpoint_url(suffix: str, *, default_base: str = "") -> str:
+    """Validate a server-configured gateway without putting keys in the URL."""
+    base_url = os.getenv("CLAUDE_API_BASE_URL", "").strip() or default_base
+    if not base_url:
+        raise ValueError("Claude API base URL is required for this format")
+    url = httpx.URL(base_url)
+    if (
+        url.scheme != "https"
+        or not url.host
+        or url.username
+        or url.password
+        or url.query
+        or url.fragment
+    ):
+        raise ValueError("invalid Claude API base URL")
+    return base_url.rstrip("/") + suffix
+
+
+def _claude_messages_url() -> str:
+    return _claude_endpoint_url("/v1/messages", default_base="https://api.anthropic.com")
+
+
+def _claude_chat_completions_url() -> str:
+    # An explicit endpoint is required; never send a gateway key to a guessed provider.
+    return _claude_endpoint_url("/chat/completions")
+
+
 async def _stream_claude(
     body: dict[str, Any],
     api_key: str,
@@ -263,7 +306,7 @@ async def _stream_claude(
         httpx.AsyncClient(timeout=30.0) as client,
         client.stream(
             "POST",
-            "https://api.anthropic.com/v1/messages",
+            _claude_messages_url(),
             headers=headers,
             json=body,
         ) as response,
