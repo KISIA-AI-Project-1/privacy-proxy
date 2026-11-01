@@ -74,6 +74,8 @@ def make_context(vendor: str) -> ProxyContext:
 
 def set_test_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     """테스트 프로세스 안에서만 사용할 가짜 환경변수를 설정한다."""
+    monkeypatch.delenv("CLAUDE_API_BASE_URL", raising=False)
+    monkeypatch.delenv("CLAUDE_API_FORMAT", raising=False)
     for name in (
         "OPENAI_API_KEY",
         "CLAUDE_API_KEY",
@@ -283,3 +285,163 @@ async def test_l7_missing_api_key(
     assert context.status == "failed"
     assert context.error == "L7_API_KEY_MISSING"
     assert context.llm_raw_response is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "https://monogpt.kr/api/monorouter/v1/anthropic",
+        "https://monogpt.kr/api/monorouter/v1/anthropic/",
+    ],
+)
+async def test_monogpt_claude_request_and_restoration(
+    monkeypatch: pytest.MonkeyPatch, base_url: str
+) -> None:
+    from restore.restorer import restore_l8
+
+    set_test_keys(monkeypatch)
+    monkeypatch.setenv("CLAUDE_API_BASE_URL", base_url)
+    context = make_context("anthropic")
+    assert context.parsed_request is not None
+    context.parsed_request.model = "claude-haiku-4.5"
+    context.reconstructed_body["model"] = "claude-haiku-4.5"
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            headers={"Content-Type": "text/event-stream"},
+            text=make_sse_response("anthropic"),
+        )
+
+    with patch(
+        "upstream.llm_client.httpx.AsyncClient",
+        new=client_factory(httpx.MockTransport(handler)),
+    ):
+        context = await call_gemini_l7(context)
+        context = await restore_l8(context)
+        assert context.final_response is not None
+        restored = "".join([chunk async for chunk in context.final_response])
+
+    assert context.status == "success"
+    assert restored == f"응답: {ORIGINAL_PHONE}"
+    assert len(requests) == 1
+    request = requests[0]
+    assert str(request.url) == "https://monogpt.kr/api/monorouter/v1/anthropic/v1/messages"
+    assert request.headers["x-api-key"] == "unit-test-placeholder"
+    assert request.headers["anthropic-version"] == "2023-06-01"
+    body = json.loads(request.content)
+    assert body["model"] == "claude-haiku-4.5"
+    assert body["stream"] is True
+    assert ORIGINAL_PHONE not in json.dumps(body, ensure_ascii=False)
+    assert PLACEHOLDER in json.dumps(body, ensure_ascii=False)
+
+
+@pytest.mark.asyncio
+async def test_monogpt_model_is_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
+    from privacy_proxy.adapters import get_current_user
+
+    with patch("privacy_proxy.adapters.get_settings") as settings:
+        settings.return_value.proxy_api_key.get_secret_value.return_value = "unit-test-placeholder"
+        user = await get_current_user("Bearer unit-test-placeholder")
+    assert "claude-haiku-4.5" in user.allowed_models
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://monogpt.kr/api/monorouter/v1/anthropic",
+        "https://user:password@monogpt.kr",
+        "https://monogpt.kr?key=placeholder",
+        "https://monogpt.kr#fragment",
+    ],
+)
+def test_claude_base_url_rejects_unsafe_configuration(
+    monkeypatch: pytest.MonkeyPatch, url: str
+) -> None:
+    from upstream.llm_client import _claude_messages_url
+
+    monkeypatch.setenv("CLAUDE_API_BASE_URL", url)
+    with pytest.raises(ValueError):
+        _claude_messages_url()
+
+
+def test_empty_claude_base_url_uses_official_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    from upstream.llm_client import _claude_messages_url
+
+    monkeypatch.setenv("CLAUDE_API_BASE_URL", "  ")
+    assert _claude_messages_url() == "https://api.anthropic.com/v1/messages"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("suffix", ["", "/"])
+async def test_universal_claude_stream_and_restoration(
+    monkeypatch: pytest.MonkeyPatch, suffix: str
+) -> None:
+    from restore.restorer import restore_l8
+
+    set_test_keys(monkeypatch)
+    monkeypatch.setenv("CLAUDE_API_FORMAT", "openai")
+    monkeypatch.setenv("CLAUDE_API_BASE_URL", "https://monogpt.kr/api/monorouter/v1" + suffix)
+    context = make_context("anthropic")
+    assert context.parsed_request is not None
+    context.parsed_request.model = "claude-sonnet-5-5"
+    context.reconstructed_body["model"] = "claude-sonnet-5-5"
+    original_body = copy.deepcopy(context.reconstructed_body)
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200, headers={"Content-Type": "text/event-stream"}, text=make_sse_response("openai")
+        )
+
+    with patch(
+        "upstream.llm_client.httpx.AsyncClient", new=client_factory(httpx.MockTransport(handler))
+    ):
+        context = await call_gemini_l7(context)
+        context = await restore_l8(context)
+        assert context.final_response is not None
+        restored = "".join([chunk async for chunk in context.final_response])
+
+    assert context.status == "success"
+    assert restored == f"응답: {ORIGINAL_PHONE}"
+    assert context.reconstructed_body == original_body
+    assert len(requests) == 1
+    request = requests[0]
+    assert str(request.url) == "https://monogpt.kr/api/monorouter/v1/chat/completions"
+    assert request.headers["Authorization"] == "Bearer unit-test-placeholder"
+    assert "x-api-key" not in request.headers
+    body = json.loads(request.content)
+    assert body["model"] == "claude-sonnet-5-5"
+    assert body["stream"] is True
+    assert "system" not in body
+    assert body["messages"][0] == {"role": "system", "content": PRIVACY_SYSTEM_SKILL}
+    assert ORIGINAL_PHONE not in json.dumps(body, ensure_ascii=False)
+
+
+@pytest.mark.asyncio
+async def test_universal_claude_model_is_allowed() -> None:
+    from privacy_proxy.adapters import get_current_user
+
+    with patch("privacy_proxy.adapters.get_settings") as settings:
+        settings.return_value.proxy_api_key.get_secret_value.return_value = "unit-test-placeholder"
+        user = await get_current_user("Bearer unit-test-placeholder")
+    assert "claude-sonnet-5-5" in user.allowed_models
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad_config", ["missing_url", "unknown_format"])
+async def test_universal_bad_configuration_does_not_send(
+    monkeypatch: pytest.MonkeyPatch, bad_config: str
+) -> None:
+    set_test_keys(monkeypatch)
+    monkeypatch.setenv("CLAUDE_API_FORMAT", "openai" if bad_config == "missing_url" else "invalid")
+    context = make_context("anthropic")
+    with patch("upstream.llm_client.httpx.AsyncClient") as client:
+        context = await call_gemini_l7(context)
+    client.assert_not_called()
+    assert context.status == "failed"
+    assert context.error == "L7_REQUEST_FAILED"
