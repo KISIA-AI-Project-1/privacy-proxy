@@ -5,15 +5,17 @@
 출력: TokenizationResult
 
 처리 방식은 (entity_type, action) 조합으로 결정한다. 원문 내용(키워드 사전 등)은 보지 않는다.
-action 은 항목별 정책(entity_policies)이 있으면 그것을, 없으면 요청 단위 policy_action 을 쓴다.
-  - 직접식별자(이름/연락처/각종 ID/고유식별정보/민감정보): action 과 무관하게 항상 가역 치환
-  - 주소: 기본 일반화(비가역). action=TOKENIZE 이면 가역 토큰
+항목별 정책(entity_policies)이 전달되면 해당 엔티티의 정책을 적용한다.
+필수 정책 키가 누락된 경우 요청 단위 policy_action으로 대체하지 않고 예외를 발생시킨다.
+entity_policies가 전달되지 않은 경우에만 요청 단위 policy_action을 사용한다.
+  - 직접식별자(이름/연락처/각종 ID/고유식별정보/민감정보): action과 무관하게 항상 가역 치환
+  - 주소: L5에서는 직접식별자로 분류해 항상 TOKENIZE. 정책이 누락된 경우 L6 기본값은 비가역 일반화
   - 준식별자(LOCATION/AGE/AGE_GROUP/LOCATION_INFORMAL):
-    L5 가 위험으로 판단해 TOKENIZE/GENERALIZE 를 내린 경우에만 보호, 그 외면 그대로 통과
-  - 상품(PRODUCT_ITEM): TOKENIZE/GENERALIZE 모두 '상품' 으로 비가역 일반화
-    (Vault 저장 안 함 -> L8 복원 제외). ALLOW/None 이면 통과.
+    L5가 위험으로 판단해 TOKENIZE/GENERALIZE를 내린 경우에만 보호, 그 외에는 그대로 통과
+  - 상품(PRODUCT_ITEM): action과 무관하게 항상 '상품'으로 비가역 일반화
+    (Vault 저장 안 함 -> L8 복원 제외)
   - 항상 통과: PURCHASE_PATTERN(정기배송 여부 등)
-    시나리오 A 에서 "업무상 유지할 정보"라서 L6 는 action 과 무관하게 건드리지 않는다.
+    시나리오 A에서 "업무상 유지할 정보"라서 L6는 action과 무관하게 건드리지 않는다.
     L5 위험 점수에는 그대로 반영된다.
 
 조사 보정: 대체어 끝 글자가 한글이면 뒤에 붙은 조사를 받침에 맞게 고친다
@@ -92,9 +94,11 @@ BASE_SPECS: dict[str, EntitySpec] = {
     "SENSITIVE_SEX_LIFE": _tok("SEX_LIFE"),
 }
 
-# action 에 따라 달라지는 타입. "*" 는 action 이 None/그 외일 때의 기본값(없으면 통과)
-# ADDRESS_ROAD/LOT/DETAIL 은 L4 가 시·구 없이 "월드컵북로4길 77" 처럼 조각으로 내보내므로
-# 비가역 기본값은 어절을 남기는 일반화가 아니라 전체 마스킹("address_fragment")이다.
+# action에 따라 달라지는 타입. "*"는 action이 None/그 외일 때의 기본값이다.
+# L5에서는 ADDRESS 계열 4종을 모두 DIRECT_IDENTIFIER로 분류해 TOKENIZE를 전달한다.
+# 따라서 실제 L5-L6 연동에서는 가역 토큰으로 처리된다.
+# 정책 누락 등으로 TOKENIZE가 전달되지 않은 경우에는 기본값으로 비가역 일반화한다.
+# ADDRESS_ROAD/LOT/DETAIL은 주소 일부만 탐지된 경우이므로 전체를 가린다.
 POLICY_SPECS: dict[str, dict[str, EntitySpec]] = {
     "ADDRESS": {"*": _gen("address"), "TOKENIZE": _tok("ADDR")},
     "ADDRESS_ROAD": {"*": _gen("address_fragment"), "TOKENIZE": _tok("ADDR_ROAD")},
@@ -107,10 +111,10 @@ POLICY_SPECS: dict[str, dict[str, EntitySpec]] = {
     "LOCATION_INFORMAL": {"TOKENIZE": _tok("LOCATION"), "GENERALIZE": _gen("location")},
     "AGE": {"TOKENIZE": _tok("AGE"), "GENERALIZE": _gen("age")},
     "AGE_GROUP": {"TOKENIZE": _tok("AGE_GROUP")},  # 이미 대략적 값이라 GENERALIZE 는 통과
-    # 상품명: 공통 표현 '상품' 으로 비가역 일반화(Vault 저장 안 함, L8 복원 제외).
-    # 요청 단위 정책이 TOKENIZE 로 폴백돼도 가역 토큰이 나가지 않게 둘 다 일반화한다.
-    # ALLOW/None 이면 통과. 카테고리 보존(예: '헤어케어 제품')은 taxonomy 가 생기면 추가한다.
-    "PRODUCT_ITEM": {"TOKENIZE": _gen("product"), "GENERALIZE": _gen("product")},
+    # 상품명: 정책 action과 무관하게 '상품'으로 비가역 일반화한다.
+    # Vault에 저장하지 않으며 L8 복원 대상에서 제외한다.
+    # 카테고리 보존은 taxonomy 도입 시 추가한다.
+    "PRODUCT_ITEM": {"*": _gen("product")},
     # 정기배송 여부는 시나리오 A 의 "업무상 유지할 정보". 팀 합의(L6 항상 통과, L5 점수엔 반영).
     # 빈 dict -> resolve_spec 이 None -> passthrough(KEEP). is_known 은 True 라 strict 에서도 예외 없음.
     # 주의: 이 키를 삭제하면 strict 모드에서 UnsupportedEntityError 로 L6 전체가 실패한다.
@@ -118,6 +122,8 @@ POLICY_SPECS: dict[str, dict[str, EntitySpec]] = {
 }
 
 _NAMESPACE_OVERRIDES = {"PERSON_KO": "PERSON", "PERSON_EN": "PERSON"}
+
+_POLICY_OPTIONAL = {"PRODUCT_ITEM", "PURCHASE_PATTERN"}
 
 
 def namespace_of(entity_type: str) -> str:
@@ -140,6 +146,16 @@ def resolve_spec(entity_type: str, policy_action: str | None) -> EntitySpec | No
 
 # ---------------------------------------------------------------------- 일반화 함수
 _PROVINCE_ENDINGS = ("특별자치도", "특별자치시", "특별시", "광역시", "도")
+_PROVINCE_ABBREVIATIONS = {
+    "서울",
+    "부산",
+    "대구",
+    "인천",
+    "광주",
+    "대전",
+    "울산",
+    "세종",
+}
 _ADMIN_ENDINGS = ("특별자치도", "특별자치시", "특별시", "광역시", "도", "시", "군", "구")
 
 
@@ -174,6 +190,9 @@ def _generalize_location(value: str) -> str:
         return parts[0]
     compact = parts[0]
     if compact.endswith(_PROVINCE_ENDINGS):
+        return compact
+
+    if compact in _PROVINCE_ABBREVIATIONS:
         return compact
     return "【LOCATION】"
 
@@ -484,15 +503,15 @@ class Tokenizer:
         session_id: str,
         raw_prompt: str,
         detected_entities: list[Any],
-        policy_action: str
-        | None = None,  # L5 의 요청 전체 보호 정책 (TOKENIZE / GENERALIZE / 그 외)
+        policy_action: str | None = None,
         entity_policies: Mapping[tuple[str, int, int], str] | None = None,
     ) -> TokenizationResult:
         """entity_policies: L5 항목별 정책. 키는 (segment_id, start_idx, end_idx).
 
-        항목별 값이 있으면 그것을, 없으면 요청 단위 policy_action 을 쓴다.
-        직접식별자(BASE_SPECS)와 PURCHASE_PATTERN 은 어느 쪽이든 정책과 무관하다
-        (전자는 항상 가역 치환, 후자는 항상 원문 유지).
+        항목별 정책(entity_policies)이 전달되면 해당 엔티티의 정책을 적용한다.
+        필수 정책 키가 누락된 경우 요청 단위 policy_action으로 대체하지 않고 예외를 발생시킨다.
+        entity_policies가 전달되지 않은 경우에만 요청 단위 policy_action을 사용한다.
+        직접식별자(BASE_SPECS)와 PURCHASE_PATTERN 은 어느 쪽이든 정책과 무관하다.
         """
         vault_mapping: dict[str, str] = {}
         token_types: dict[str, str] = {}
@@ -505,6 +524,27 @@ class Tokenizer:
         cursor = 0
 
         resolved = self._resolve_overlaps(detected_entities)
+        if entity_policies is not None:
+            for e in resolved:
+                start, end = e.start_idx, e.end_idx
+                entity_type = str(e.entity_type)
+                segment_id = getattr(e, "segment_id", "seg-1")
+
+                # 기존 span 검증과 오류 우선순위를 유지한다.
+                if not (0 <= start < end <= len(raw_prompt)):
+                    continue
+                if raw_prompt[start:end] != e.original_value:
+                    continue
+                if not is_known(entity_type):
+                    continue
+
+                policy_key = (segment_id, start, end)
+                if (
+                    policy_key not in entity_policies
+                    and entity_type not in _POLICY_OPTIONAL
+                    and entity_type not in BASE_SPECS
+                ):
+                    raise ValueError(f"L5 entity policy missing: {entity_type}[{start}:{end}]")
         for index, e in enumerate(resolved):
             start, end, original = e.start_idx, e.end_idx, e.original_value
             entity_type = str(e.entity_type)
@@ -521,40 +561,103 @@ class Tokenizer:
             if not is_known(entity_type):
                 if self.strict:
                     raise UnsupportedEntityError(entity_type)
+
                 skipped.append(entity_type)
                 actions.append(
-                    EntityAction(segment_id, start, end, entity_type, EntityActionKind.SKIPPED)
+                    EntityAction(
+                        segment_id,
+                        start,
+                        end,
+                        entity_type,
+                        EntityActionKind.SKIPPED,
+                    )
                 )
                 continue
 
             action = policy_action
+
             if entity_policies is not None:
-                action = entity_policies.get((segment_id, start, end), policy_action)
+                policy_key = (segment_id, start, end)
+
+                if policy_key in entity_policies:
+                    action = entity_policies[policy_key]
+                elif entity_type not in _POLICY_OPTIONAL and entity_type not in BASE_SPECS:
+                    raise ValueError(f"L5 entity policy missing: {entity_type}[{start}:{end}]")
+
             spec = resolve_spec(entity_type, action)
             if spec is None:
                 passthrough.append(entity_type)
                 actions.append(
-                    EntityAction(segment_id, start, end, entity_type, EntityActionKind.KEEP)
+                    EntityAction(
+                        segment_id,
+                        start,
+                        end,
+                        entity_type,
+                        EntityActionKind.KEEP,
+                    )
                 )
                 continue
 
-            resume = end  # 다음 조각을 이어 붙일 원문 위치
+            resume = end
+
             if spec.strategy is Strategy.GENERALIZE:
                 replacement = GENERALIZERS[spec.generalizer](original)
                 actions.append(
-                    EntityAction(segment_id, start, end, entity_type, EntityActionKind.GENERALIZE)
+                    EntityAction(
+                        segment_id,
+                        start,
+                        end,
+                        entity_type,
+                        EntityActionKind.GENERALIZE,
+                    )
                 )
+
             else:
-                replacement = self._bind(session_id, raw_prompt, entity_type, spec, original, cache)
-                vault_mapping[replacement] = original
+                replacement = self._bind(
+                    session_id,
+                    raw_prompt,
+                    entity_type,
+                    spec,
+                    original,
+                    cache,
+                )
+
+                record = self.store.get_by_pseudonym(
+                    session_id,
+                    replacement,
+                )
+
+                if record is None:
+                    raise ValueError(f"vault mapping not found for pseudonym: {replacement}")
+
+                # Vault에 실제 저장된 원문을 사용한다.
+                # 같은 전화번호의 표기 형식이 달라도 reveal() 결과와 일치한다.
+                vault_mapping[replacement] = self.crypto.decrypt(
+                    record.original_enc,
+                    aad=self._aad(session_id, record.entity_type),
+                )
+
                 token_types[replacement] = entity_type
                 placements[replacement] = placements.get(replacement, 0) + 1
+
                 actions.append(
-                    EntityAction(segment_id, start, end, entity_type, EntityActionKind.TOKENIZE)
+                    EntityAction(
+                        segment_id,
+                        start,
+                        end,
+                        entity_type,
+                        EntityActionKind.TOKENIZE,
+                    )
                 )
 
             # 매핑 등록 뒤에 붙이므로 vault_mapping 키(가명)에는 조사가 섞이지 않는다.
-            josa, consumed = _fix_josa(replacement, raw_prompt, end, next_start)
+            josa, consumed = _fix_josa(
+                replacement,
+                raw_prompt,
+                end,
+                next_start,
+            )
+
             if consumed:
                 replacement += josa
                 resume = end + consumed
@@ -566,19 +669,30 @@ class Tokenizer:
         pieces.append(raw_prompt[cursor:])
         output = "".join(pieces)
 
-        # 안전망: 가명이 의도한 횟수만큼만 나타나야 한다(인접 문자열과 합쳐져 새로 생기는 경우 등 차단)
+        # 안전망: 가명이 의도한 횟수만큼만 나타나야 한다.
         for pseudonym, count in placements.items():
             if output.count(pseudonym) != count:
                 raise PseudonymCollisionError(
                     f"pseudonym collision in output: {token_types[pseudonym]}"
                 )
 
-        return TokenizationResult(output, vault_mapping, token_types, skipped, passthrough, actions)
+        return TokenizationResult(
+            output,
+            vault_mapping,
+            token_types,
+            skipped,
+            passthrough,
+            actions,
+        )
 
     # ------------------------------------------------------------------ L8 복원용
+
     def reveal(self, session_id: str, pseudonym: str) -> str | None:
-        """가명(alias 포함) -> 원문. 없으면 None. 역할 기반 복원 여부는 L8 정책에서 판단."""
+        """가명(alias 포함) -> 원문. 없으면 None."""
         rec = self.store.get_by_pseudonym(session_id, pseudonym)
         if rec is None:
             return None
-        return self.crypto.decrypt(rec.original_enc, aad=self._aad(session_id, rec.entity_type))
+        return self.crypto.decrypt(
+            rec.original_enc,
+            aad=self._aad(session_id, rec.entity_type),
+        )

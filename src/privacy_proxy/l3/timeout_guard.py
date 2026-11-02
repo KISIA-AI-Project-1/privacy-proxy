@@ -94,6 +94,18 @@ class TimeoutCallable:
             raise L3DependencyTimeoutError() from None
 
 
+def protect_number_validators(registry: RecognizerRegistry) -> None:
+    """Convert numeric producer validation timeouts before Presidio swallows them."""
+    targets = frozenset(("KR_RRN", "KR_FRN", "KR_BRN", "KR_DRIVER_LICENSE"))
+    for producer in registry.recognizers:
+        if not isinstance(producer, PatternRecognizer):
+            continue
+        if len(producer.supported_entities) != 1 or producer.supported_entities[0] not in targets:
+            continue
+        instance = cast(Any, producer)
+        instance.validate_result = protect_callable(instance.validate_result)
+
+
 def protect_callable(
     callback: Callable[..., Any] | TimeoutCallable,
 ) -> TimeoutCallable:
