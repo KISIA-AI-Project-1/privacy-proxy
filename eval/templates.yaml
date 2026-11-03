@@ -1,0 +1,153 @@
+# {SLOT}은 build_dataset.py가 가상값으로 채움(SLOT_TYPES에 있으면 gold).
+# [[원문|TYPE]]은 그대로 두고 gold로만 표시.
+# facts kind: equivariant = 답변에 원본 값이 그대로 돌아와야 함 / invariant = 판단·사실이 안 바뀌어야 함.
+# group: 작성 출처. 점수는 group별로 따로 냄.
+
+- id: refund_ok
+  group: template_claude
+  task: {type: 분류, reference: 가능}
+  prompt: |
+    고객 {NAME}님 문의입니다. 주문번호 {ORDER_ID}로 {DATE}에 받은 상품을 단순 변심으로 반품하고 싶다고 합니다.
+    수령 후 5일 지났고 포장은 뜯지 않았다고 합니다. 규정은 수령 후 7일 이내 미개봉이면 환불 가능입니다.
+    환불 가능 여부를 '가능' 또는 '불가' 한 단어로만 답하세요.
+  facts:
+    - {fact: 가능, kind: invariant}
+
+- id: refund_no
+  group: template_claude
+  task: {type: 분류, reference: 불가}
+  prompt: |
+    {NAME} 고객님이 주문번호 {ORDER_ID} 상품 환불을 요청했습니다. 연락처는 {PHONE}입니다.
+    수령한 지 12일이 지났고 이미 사용한 상태입니다. 규정은 수령 후 7일 이내 미사용이면 환불 가능입니다.
+    환불 가능 여부를 '가능' 또는 '불가' 한 단어로만 답하세요.
+  facts:
+    - {fact: 불가, kind: invariant}
+
+- id: extract_order_phone
+  group: template_claude
+  task: {type: 추출, reference: '{"order_id": "{ORDER_ID}", "phone": "{PHONE}"}'}
+  prompt: |
+    아래 문의에서 주문번호와 연락처를 JSON {"order_id": ..., "phone": ...} 형식으로만 추출해줘.
+    문의: 안녕하세요 {NAME}입니다. 주문번호 {ORDER_ID} 배송이 아직 안 와서요. 연락처는 {PHONE}입니다.
+  facts:
+    - {fact: '{ORDER_ID}', kind: equivariant}
+    - {fact: '{PHONE}', kind: equivariant}
+
+- id: reply_shipping
+  group: template_claude
+  task: {type: 자유서술, reference: ''}
+  prompt: |
+    고객 {NAME}님께 보낼 답장 초안을 써줘. 운송장번호 {TRACKING}로 {DATE} 출고됐고 1~2일 안에 도착할 예정이라고 안내해줘.
+  facts:
+    - {fact: '{NAME}', kind: equivariant}
+    - {fact: '{TRACKING}', kind: equivariant}
+    - {fact: '{DATE}', kind: invariant}
+
+- id: address_change
+  group: template_claude
+  task: {type: 자유서술, reference: ''}
+  prompt: |
+    회원번호 {CUSTOMER_ID} 고객 {NAME}님이 배송지를 {ADDRESS_ROAD} {ADDRESS_DETAIL}로 바꿔 달라고 합니다.
+    변경 완료를 알리는 문자 메시지를 두 문장으로 작성해줘.
+  facts:
+    - {fact: '{NAME}', kind: equivariant}
+    - {fact: '{ADDRESS_ROAD}', kind: equivariant}
+    - {fact: '{ADDRESS_DETAIL}', kind: equivariant}
+
+- id: customs_delay
+  group: template_claude
+  task: {type: 자유서술, reference: ''}
+  prompt: |
+    해외직구 주문 {ORDER_ID}의 통관이 지연되고 있습니다. 고객 개인통관고유부호는 {CUSTOMS_ID}이고 연락처는 {PHONE}입니다.
+    고객에게 통관 지연을 안내하고 개인통관고유부호가 맞는지 확인을 요청하는 메시지를 써줘.
+  facts:
+    - {fact: '{ORDER_ID}', kind: equivariant}
+    - {fact: '{CUSTOMS_ID}', kind: equivariant}
+
+- id: refund_account
+  group: template_claude
+  task: {type: 자유서술, reference: ''}
+  prompt: |
+    환불 금액 {AMOUNT}을 고객 계좌로 보내려고 합니다. 환불 계좌는 {BANK} {ACCOUNT}, 예금주는 {NAME}입니다.
+    고객에게 보낼 환불 안내문을 써줘. 금액과 계좌번호를 꼭 포함해줘.
+  facts:
+    - {fact: '{AMOUNT}', kind: invariant}
+    - {fact: '{ACCOUNT}', kind: equivariant}
+    - {fact: '{NAME}', kind: equivariant}
+
+- id: adult_verify
+  group: template_claude
+  task: {type: 분류, reference: 가능}
+  prompt: |
+    본인확인 요청입니다. 고객 {NAME}, 생년월일 {DOB}, 주민등록번호 {RRN}. 고객님은 {AGE}입니다.
+    만 19세 이상만 살 수 있는 상품입니다. 구매 가능 여부를 '가능' 또는 '불가' 한 단어로만 답하세요.
+  facts:
+    - {fact: 가능, kind: invariant}
+
+- id: foreigner_summary
+  group: template_claude
+  task: {type: 자유서술, reference: ''}
+  prompt: |
+    다음 문의를 세 줄로 요약해줘.
+    외국인 고객 {NAME}님이 외국인등록번호 {FRN}와 여권번호 {PASSPORT}로 본인인증을 했는데 결제가 {AMOUNT}에서 계속 실패한다고 합니다.
+    오늘 안에 해결이 안 되면 주문을 취소하겠다고 합니다.
+  facts:
+    - {fact: '{AMOUNT}', kind: invariant}
+    - {fact: 취소, kind: invariant}
+
+- id: tax_invoice
+  group: template_claude
+  task: {type: 자유서술, reference: ''}
+  prompt: |
+    사업자 고객 {NAME} 대표님(사업자등록번호 {BRN}, 이메일 {EMAIL})이 주문번호 {ORDER_ID} 건의 세금계산서 발행을 요청했습니다.
+    접수 확인 메일 초안을 써줘. 사업자등록번호와 이메일을 다시 적어서 확인을 받아줘.
+  facts:
+    - {fact: '{BRN}', kind: equivariant}
+    - {fact: '{EMAIL}', kind: equivariant}
+
+- id: health_delivery_cls
+  group: template_claude
+  task: {type: 분류, reference: 배송지연}
+  prompt: |
+    고객 {NAME}님 문의: 제가 [[당뇨|SENSITIVE_HEALTH]] 진단받아서 [[혈당 측정기|PRODUCT_ITEM]]를 [[정기배송|PURCHASE_PATTERN]]으로 주문했는데(주문번호 {ORDER_ID}) 이번 달 배송이 안 왔어요.
+    이 문의 유형을 '배송지연', '환불', '교환', '기타' 중 하나로만 답하세요.
+  facts:
+    - {fact: 배송지연, kind: invariant}
+
+- id: discreet_packaging_cls
+  group: template_claude
+  task: {type: 분류, reference: 포장요청}
+  prompt: |
+    {NAME} 고객님이 [[콘돔|PRODUCT_ITEM]]을 주문했는데(주문번호 {ORDER_ID}) 상자에 상품명이 보이지 않게 포장해 달라고 합니다.
+    이 요청 유형을 '포장요청', '환불', '교환', '기타' 중 하나로만 답하세요.
+  facts:
+    - {fact: 포장요청, kind: invariant}
+
+- id: lot_pickup
+  group: template_claude
+  task: {type: 자유서술, reference: ''}
+  prompt: |
+    {NAME}님이 반품 상품을 {ADDRESS_LOT} 앞에서 {DATE}에 회수해 달라고 합니다. 연락처는 {PHONE}입니다.
+    택배 기사님께 전달할 회수 요청 메모를 써줘.
+  facts:
+    - {fact: '{ADDRESS_LOT}', kind: equivariant}
+    - {fact: '{PHONE}', kind: equivariant}
+    - {fact: '{DATE}', kind: invariant}
+
+- id: license_rental
+  group: template_claude
+  task: {type: 분류, reference: 가능}
+  prompt: |
+    전동킥보드 대여 상품 구매 시 운전면허 확인이 필요합니다. 고객 {NAME}님의 운전면허번호는 {LICENSE}이고 면허는 유효합니다.
+    대여 상품 구매 가능 여부를 '가능' 또는 '불가' 한 단어로만 답하세요.
+  facts:
+    - {fact: 가능, kind: invariant}
+
+- id: coupon_qa
+  group: template_claude
+  task: {type: QA, reference: '{NET}'}
+  prompt: |
+    고객 {NAME}님이 {DATE}에 주문번호 {ORDER_ID}로 {AMOUNT}짜리 상품을 주문하면서 3,000원 쿠폰을 썼습니다.
+    실제 결제 금액은 얼마인가요? '12,345원' 형식으로 금액만 답하세요.
+  facts:
+    - {fact: '{NET}', kind: invariant}

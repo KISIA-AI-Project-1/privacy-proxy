@@ -1,0 +1,51 @@
+# lenient 채점용 선택지. 프롬프트에 적힌 보기를 그대로 옮김(답변을 보고 정하지 않음).
+# 템플릿 id: [선택지...]          → 선택지 추출 규칙(score.py lenient_choice)
+# 템플릿 id: {value: number}     → 답변의 숫자를 뽑아 정답 숫자와 대조
+# 템플릿 id: {value: contains}   → 정규화한 정답 문자열 포함(형식 고정값: 전화·이메일·표기명)
+# 여기 없는 분류·QA는 strict 규칙 그대로.
+refund_ok: [가능, 불가]
+refund_no: [가능, 불가]
+adult_verify: [가능, 불가]
+license_rental: [가능, 불가]
+health_delivery_cls: [배송지연, 환불, 교환, 기타]
+discreet_packaging_cls: [포장요청, 환불, 교환, 기타]
+coupon_qa: {value: number}
+llmc_refund_01: [가능, 불가]
+llmc_refund_02: {value: number}
+llmc_refund_04: [가능, 불가]
+llmc_delay_01: [예, 아니오]
+llmc_delay_03: [택배사지연, 재고부족, 주소오류]
+llmc_sensitive_01: {value: contains}
+llmc_sensitive_02: [가능, 불가]
+llmc_reply_04: {value: number}
+llmc_addr_02: [예, 아니오]
+llmc_addr_03: [주소, 전화번호, 이메일, 복수]
+llmc_customs_01: [면세, 과세]
+llmc_customs_03: [명의불일치, 수량초과, 반입금지품목, 서류미비]
+llmc_refundacct_02: [가능, 불가]
+llmc_refundacct_03: [카드취소, 계좌환불, 포인트환불]
+llmc_auth_01: [미성년, 명의불일치, 통신사오류, 입력오류]
+llmc_auth_02: {value: contains}
+llmc_taxinv_02: [가능, 불가]
+llmc_taxinv_03: [신규발행, 수정발행, 발행취소]
+llmc_summary_02: [해결, 보류, 이관]
+llmc_complaint_01: [배송지연, 상품불량, 응대불만, 환불지연, 개인정보노출]
+llmc_complaint_02: [배송지연, 상품불량, 응대불만, 환불지연, 개인정보노출]
+llmc_complaint_03: [예, 아니오]
+llmc_multi_01: {value: number}
+llmg_refund_01: [가능, 불가]
+llmg_refund_02: [가능, 불가]
+llmg_delay_02: [미출고, 출고완료, 배송완료]
+llmg_address_02: [가능, 불가능]
+llmg_address_03: {value: contains}
+llmg_customs_02: [일치, 불일치]
+llmg_bank_account_02: [일치, 불일치]
+llmg_auth_01: [인증성공, 인증실패]
+llmg_auth_02: [가능, 불가]
+llmg_tax_invoice_02: [발행가능, 발행불가]
+llmg_sensitive_product_02: [건강기능식품, 성인용품]
+llmg_summary_03: [환불문의, 교환문의, 배송문의]
+llmg_draft_02: {value: contains}
+llmg_draft_03: [안내, 사과, 경고]
+llmg_complaint_01: [배송지연, 상품불량, 친절도, 오배송]
+llmg_complaint_03: [상, 중, 하]
