@@ -4,7 +4,7 @@ from .schemas import DetectedPII, DetectionTier, ProxyContext
 
 
 async def mock_l3_detection(context: ProxyContext) -> ProxyContext:
-    "[정민우님] L3: 기본 개인정보 정규식 탐지"
+    "L3: 기본 개인정보 정규식 탐지"
     try:
         phone_pattern = r"\d{2,3}-\d{3,4}-\d{4}"
         for match in re.finditer(phone_pattern, context.raw_prompt):
@@ -27,7 +27,7 @@ async def mock_l3_detection(context: ProxyContext) -> ProxyContext:
 
 
 async def mock_l4_detection_ecommerce(context: ProxyContext) -> ProxyContext:
-    "[이선학님] L4: 이커머스 특화 데이터 탐지"
+    "L4: 이커머스 특화 데이터 탐지"
     try:
         order_pattern = r"ORD-\d+"
         for match in re.finditer(order_pattern, context.raw_prompt):
@@ -50,7 +50,7 @@ async def mock_l4_detection_ecommerce(context: ProxyContext) -> ProxyContext:
 
 
 async def mock_l5_risk_scoring(context: ProxyContext) -> ProxyContext:
-    """[형지원님] L5: 초안 알고리즘 기반 위험도 평가 및 채점"""
+    """L5: 초안 알고리즘 기반 위험도 평가 및 채점"""
     try:
         unique_entities = {e.original_value: e for e in context.detected_entities}.values()
         qis_count = len(unique_entities)
@@ -78,7 +78,7 @@ async def mock_l5_risk_scoring(context: ProxyContext) -> ProxyContext:
 
 
 async def mock_l6_vault_tokenization(context: ProxyContext) -> ProxyContext:
-    "[윤채림님] L6: 토큰화 및 Vault 매핑 구축"
+    "L6: 토큰화 및 Vault 매핑 구축"
     try:
         text = context.raw_prompt
 

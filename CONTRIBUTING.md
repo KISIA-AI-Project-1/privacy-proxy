@@ -5,11 +5,11 @@
 ```
 main (항상 동작 상태, 발표/제출용)
  └─ develop (통합 브랜치)
-     ├─ feature/detection            # 기본 탐지 (정민우)
-     ├─ feature/detection-ecommerce  # 이커머스 특화 탐지 (이선학)
-     ├─ feature/risk-scoring         # 문맥·위험도 평가 (형지원)
-     ├─ feature/vault                # 가명화·Vault (윤채림)
-     └─ feature/proxy                # 프록시·복원 (김민석)
+     ├─ feature/detection            # 기본 탐지 (L3)
+     ├─ feature/detection-ecommerce  # 이커머스 특화 탐지 (L4)
+     ├─ feature/risk-scoring         # 문맥·위험도 평가 (L5)
+     ├─ feature/vault                # 가명화·Vault (L6)
+     └─ feature/proxy                # 프록시·복원 (L7~L9)
 ```
 
 - `main` 직접 push 금지. `develop`에서 검증된 것만 merge한다.

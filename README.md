@@ -45,17 +45,17 @@ flowchart TD
 
 ### 레이어별 담당
 
-| 레이어 | 내용 | 담당 |
+| 레이어 | 내용 | 브랜치 |
 | --- | --- | --- |
 | L1 | 인증·인가 — 프록시 전용 키 검증, 사용자/부서/role 조회 | 공통 (프록시 스켈레톤) |
 | L2 | 요청 파싱 — JSON path 보존, 벤더별 어댑터 | 공통 (프록시 스켈레톤) |
-| L3 | 기본 탐지 — Presidio Regex + NER Recognizer | 정민우 |
-| L4 | 이커머스 특화 탐지 — KLUE-BERT NER, 조사 분리, Custom Recognizer | 이선학 |
-| L5 | 문맥·간접식별 위험도 — 준식별자 결합 탐지, Risk Score 산출 | 형지원 |
-| L6 | 가역적 토큰화 & Vault — 세션 일관 치환, AES-256 Redis | 윤채림 |
+| L3 | 기본 탐지 — Presidio Regex + NER Recognizer | `feature/detection` |
+| L4 | 이커머스 특화 탐지 — KLUE-BERT NER, 조사 분리, Custom Recognizer | `feature/detection-ecommerce` |
+| L5 | 문맥·간접식별 위험도 — 준식별자 결합 탐지, Risk Score 산출 | `feature/risk-scoring` |
+| L6 | 가역적 토큰화 & Vault — 세션 일관 치환, AES-256 Redis | `feature/vault` |
 | L7 | 업스트림 중계 — 키 교체, 경로 미러링 | 공통 (하네스 엔지니어링) |
-| L8 | 응답 검사 & 역치환 — SSE Carry Buffer, 역할 기반 선택 복원 | 김민석 |
-| L9 | 감사 로그 — 원문/매핑 미저장, 해시·메타데이터만 | 김민석 |
+| L8 | 응답 검사 & 역치환 — SSE Carry Buffer, 역할 기반 선택 복원 | `feature/proxy` |
+| L9 | 감사 로그 — 원문/매핑 미저장, 해시·메타데이터만 | `feature/proxy` |
 
 ## 용어
 
@@ -81,11 +81,11 @@ flowchart TD
 | --- | --- |
 | `main` | 최종 제출 — 직접 push 금지 |
 | `develop` | 통합 브랜치 — 직접 push 금지 |
-| `feature/detection` | 기본 탐지 (L3) — 정민우 |
-| `feature/detection-ecommerce` | 이커머스 특화 탐지 (L4) — 이선학 |
-| `feature/risk-scoring` | 문맥·위험도 평가 (L5) — 형지원 |
-| `feature/vault` | 가명화·Vault (L6) — 윤채림 |
-| `feature/proxy` | 프록시·복원 (L7~L9) — 김민석 |
+| `feature/detection` | 기본 탐지 (L3) |
+| `feature/detection-ecommerce` | 이커머스 특화 탐지 (L4) |
+| `feature/risk-scoring` | 문맥·위험도 평가 (L5) |
+| `feature/vault` | 가명화·Vault (L6) |
+| `feature/proxy` | 프록시·복원 (L7~L9) |
 
 ```bash
 git fetch origin
@@ -208,18 +208,18 @@ privacy-proxy/
 │   │   ├── anthropic.py         #    Anthropic Messages API 어댑터
 │   │   └── openai.py            #    OpenAI Chat Completions 어댑터
 │   ├── detection/
-│   │   ├── base/                # L3 기본 탐지 (정민우)
+│   │   ├── base/                # L3 기본 탐지
 │   │   │   ├── analyzer.py      #    Presidio Analyzer 구성
 │   │   │   └── recognizers/     #    이름·전화번호·이메일·주소
-│   │   └── ecommerce/           # L4 이커머스 특화 탐지 (이선학)
+│   │   └── ecommerce/           # L4 이커머스 특화 탐지
 │   │       ├── klue_ner.py      #    KLUE-BERT NER 연동
 │   │       ├── alignment.py     #    NER span 경계 ↔ 조사 분리 (offset_mapping 기반)
 │   │       └── recognizers/     #    주문번호·고객번호·배송정보·환불사유
-│   ├── risk/                    # L5 문맥·간접식별 위험도 (형지원)
+│   ├── risk/                    # L5 문맥·간접식별 위험도
 │   │   ├── quasi_identifiers.py #    준식별자 정의
 │   │   ├── combination.py       #    3개 이상 결합 탐지
 │   │   └── score.py             #    Risk Score(R) 산출, 등급별 정책
-│   ├── vault/                   # L6 가역적 토큰화 & Vault (윤채림)
+│   ├── vault/                   # L6 가역적 토큰화 & Vault
 │   │   ├── tokenizer.py         #    세션 일관 대체값 생성
 │   │   ├── crypto.py            #    AES-256 암복호화
 │   │   ├── store.py             #    Redis 저장소
@@ -227,11 +227,11 @@ privacy-proxy/
 │   ├── upstream/                # L7 업스트림 중계
 │   │   ├── relay.py             #    경로 미러링
 │   │   └── credentials.py       #    키 교체 주입
-│   ├── restore/                 # L8 응답 검사 & 역치환 (김민석)
+│   ├── restore/                 # L8 응답 검사 & 역치환
 │   │   ├── sse_buffer.py        #    SSE Carry Buffer
 │   │   ├── detokenizer.py       #    Vault 역매핑
 │   │   └── policy.py            #    역할 기반 선택 복원
-│   └── audit/                   # L9 감사 로그 (김민석)
+│   └── audit/                   # L9 감사 로그
 │       ├── logger.py            #    해시·메타데이터만 기록
 │       └── schema.py            #    감사 레코드 스키마
 ├── tests/
